@@ -14,6 +14,7 @@ from src.utils import (
     plot_prepared_observation_data,
     plot_prepared_sampling_data,
     plot_sampling_data,
+    plot_schlieren_image,
 )
 
 
@@ -61,6 +62,10 @@ def run() -> None:
 
         # Plot all observation points
         plot_observation_data(observations, params)
+
+        # Plot Schlieren image
+        if params["identification"]["observations"]["schlieren"].get("enabled", False):
+            plot_schlieren_image(observations["schlieren"], params)
 
         # Plot observation datasets: training, validation, test
         plot_prepared_observation_data(prepared_observations, params)

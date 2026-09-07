@@ -1,12 +1,87 @@
 # SPDX-License-Identifier: MIT
 import os
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pyvista as pv
-from matplotlib import rc
 
+from pathlib import Path
+from matplotlib import rc
 rc("text", usetex=False)
+
+
+def plot_schlieren_image(schlieren, params):
+    """Plot schlieren observations and save them as a PDF.
+
+    Parameters
+    ----------
+    schlieren : dict
+        Coordinates under "x" and "y", and schlieren values under
+        the configured gradient-type key.
+    params : dict
+        PIRFlow configuration.
+
+    Returns
+    -------
+    None
+        A PDF file is written to the results directory.
+    """
+    grad_type = (
+        params["identification"]["observations"]["schlieren"]["grad_type"]
+    )
+
+    x = np.asarray(schlieren["x"]).reshape(-1)
+    y = np.asarray(schlieren["y"]).reshape(-1)
+    values = np.asarray(schlieren[grad_type]).reshape(-1)
+
+    fig, ax = plt.subplots(figsize=(12, 4))
+
+    plot = ax.scatter(
+        x,
+        y,
+        c=values,
+        cmap="gray",
+        marker="s",
+        s=2,
+        linewidths=0,
+        rasterized=True,
+    )
+
+    ax.tick_params(direction="in", which="both")
+    ax.tick_params(labelsize=18)
+    ax.set_xlabel(r"$x$ $[m]$", fontsize=18)
+    ax.set_ylabel(r"$y$ $[m]$", fontsize=18)
+    ax.set_aspect("equal", adjustable="box")
+    fig.subplots_adjust(left=0.08, right=0.99, bottom=0.15, top=0.97)
+
+    if grad_type == "grad_x":
+        grad_title = r"$\frac{\partial\hat\rho}{\partial x}$" 
+    elif grad_type == "grad_y":
+        grad_title = r"$\frac{\partial\hat\rho}{\partial y}$" 
+    elif grad_type == "magnitude":
+        grad_title = r"$\left\|\nabla \hat{\rho}\right\|$" 
+
+    cbar = fig.colorbar(
+        plot,
+        ax=ax,
+        shrink=0.39,       # Length: 70% of the default.
+        pad=0.02,          # Gap between the axes and colorbar.
+        aspect=10,         # Larger values make the colorbar thinner.
+        location="right",
+    )
+    cbar.set_label(
+        grad_title,
+        fontsize=18,
+        labelpad=10,
+        rotation=0,
+    )
+    cbar.ax.tick_params(labelsize=12)
+
+    fig.tight_layout()
+
+    output_path = Path(params["paths"]["results"])
+    fig.savefig(output_path / "schlieren_image.pdf", dpi=600)
+    plt.show()
+    plt.close(fig)
 
 def plot_observation_data(observation, params):
     """Plot observation dataset
@@ -43,7 +118,7 @@ def plot_observation_data(observation, params):
     fig, ax = plt.subplots(1, 1, num=1, figsize=(12, 4), sharey=True)
     plt.rc("legend", fontsize=14)
 
-    # p0, = ax.plot(xs, ys, 'o', color='b', markersize=2)
+    p0, = ax.plot(xs, ys, 'o', color='b', markersize=2)
     (p1,) = ax.plot(xp, yp, "o", color="r", markersize=2)
     for i in range(dims * n_files):
         xv = observation["velocity_profiles"][i]["x"]
@@ -59,9 +134,9 @@ def plot_observation_data(observation, params):
     fig.subplots_adjust(left=0.08, right=0.99, bottom=0.15, top=0.97)
 
     ax.legend(
-        [p1, p2],
+        [p0, p1, p2],
         [
-            # r'Schlieren',
+            r'Schlieren',
             r"Pressure taps",
             r"Velocity profiles",
         ],
@@ -69,7 +144,6 @@ def plot_observation_data(observation, params):
     )
 
     fig.savefig(params["paths"]["results"] + "/observation_data.pdf")
-
     plt.close(fig)
 
 
@@ -144,7 +218,7 @@ def plot_observation_data_split(observation, params, dataset):
     fig, ax = plt.subplots(1, 1, num=1, figsize=(12, 4), sharey=True)
     plt.rc("legend", fontsize=14)
 
-    (p0,) = ax.plot(xp, yp, "o", color="r", markersize=2)
+    (p0,) = ax.plot(xp, yp, "o", color="k", markersize=2)
     ax.plot(xu, yu, "o", color="k", markersize=2)
     ax.plot(xv, yv, "o", color="k", markersize=2)
     ax.plot(xs, ys, "o", color="k", markersize=2)
@@ -178,7 +252,6 @@ def plot_observation_data_split(observation, params, dataset):
     else:
         raise ValueError(f"Unknown dataset {dataset}")
 
-    plt.show()
     plt.close(fig)
 
 

@@ -9,6 +9,7 @@ from .plot import (
     plot_observation_data, 
     plot_prepared_observation_data,
     plot_prepared_sampling_data,
+    plot_schlieren_image,
 )
 
 __all__ = [
@@ -18,6 +19,7 @@ __all__ = [
         "plot_prepared_observation_data",
         "plot_prepared_sampling_data",
         "plot_sampling_data",
+        "plot_schlieren_image",
         "print_metrics_table",
         "print_loss",
 ]
