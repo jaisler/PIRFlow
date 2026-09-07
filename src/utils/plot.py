@@ -80,7 +80,6 @@ def plot_schlieren_image(schlieren, params):
 
     output_path = Path(params["paths"]["results"])
     fig.savefig(output_path / "schlieren_image.pdf", dpi=600)
-    plt.show()
     plt.close(fig)
 
 def plot_observation_data(observation, params):
