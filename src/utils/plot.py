@@ -1,16 +1,260 @@
 # SPDX-License-Identifier: MIT
 import os
-import pyvista as pv
 import matplotlib.pyplot as plt
-import matplotlib.colors as colors
-import matplotlib.tri as mtri
-from matplotlib import rc, cm
-from matplotlib.colors import TwoSlopeNorm
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
-rc('text', usetex=False)
+import pyvista as pv
 
-def plot_prepared_data(data, params):
+from pathlib import Path
+from matplotlib import rc
+rc("text", usetex=False)
+
+
+def plot_schlieren_image(schlieren, params):
+    """Plot schlieren observations and save them as a PDF.
+
+    Parameters
+    ----------
+    schlieren : dict
+        Coordinates under "x" and "y", and schlieren values under
+        the configured gradient-type key.
+    params : dict
+        PIRFlow configuration.
+
+    Returns
+    -------
+    None
+        A PDF file is written to the results directory.
+    """
+    grad_type = (
+        params["identification"]["observations"]["schlieren"]["grad_type"]
+    )
+
+    x = np.asarray(schlieren["x"]).reshape(-1)
+    y = np.asarray(schlieren["y"]).reshape(-1)
+    values = np.asarray(schlieren[grad_type]).reshape(-1)
+
+    fig, ax = plt.subplots(figsize=(12, 4))
+
+    plot = ax.scatter(
+        x,
+        y,
+        c=values,
+        cmap="gray",
+        marker="s",
+        s=2,
+        linewidths=0,
+        rasterized=True,
+    )
+
+    ax.tick_params(direction="in", which="both")
+    ax.tick_params(labelsize=18)
+    ax.set_xlabel(r"$x$ $[m]$", fontsize=18)
+    ax.set_ylabel(r"$y$ $[m]$", fontsize=18)
+    ax.set_aspect("equal", adjustable="box")
+    fig.subplots_adjust(left=0.08, right=0.99, bottom=0.15, top=0.97)
+
+    if grad_type == "grad_x":
+        grad_title = r"$\frac{\partial\hat\rho}{\partial x}$" 
+    elif grad_type == "grad_y":
+        grad_title = r"$\frac{\partial\hat\rho}{\partial y}$" 
+    elif grad_type == "magnitude":
+        grad_title = r"$\left\|\nabla \hat{\rho}\right\|$" 
+
+    cbar = fig.colorbar(
+        plot,
+        ax=ax,
+        shrink=0.39,       # Length: 70% of the default.
+        pad=0.02,          # Gap between the axes and colorbar.
+        aspect=10,         # Larger values make the colorbar thinner.
+        location="right",
+    )
+    cbar.set_label(
+        grad_title,
+        fontsize=18,
+        labelpad=10,
+        rotation=0,
+    )
+    cbar.ax.tick_params(labelsize=12)
+
+    fig.tight_layout()
+
+    output_path = Path(params["paths"]["results"])
+    fig.savefig(output_path / "schlieren_image.pdf", dpi=600)
+    plt.close(fig)
+
+def plot_observation_data(observation, params):
+    """Plot observation dataset
+
+    Parameters
+    ----------
+    data : dict
+        Observation dataset
+    params : dict
+        PIRFlow configuration.
+
+    Returns
+    -------
+    None
+        A PDF file is written to the result directory.
+
+    """
+
+    # Note that this function assumes that the user enabled the
+    # Schlieren, velocity profiesl and pressure taps. 
+    # TODO: make it general so that the this function works 
+    # for any kind of combination.
+
+
+    dims = params["geometry"]["dimension"]
+    config_vp = params["identification"]["observations"]["velocity_profiles"]
+    n_files = config_vp["n_files"]
+
+    xs = observation["schlieren"]["x"]
+    ys = observation["schlieren"]["y"]
+    xp = observation["pressure_taps"]["x"]
+    yp = observation["pressure_taps"]["y"]
+
+    fig, ax = plt.subplots(1, 1, num=1, figsize=(12, 4), sharey=True)
+    plt.rc("legend", fontsize=14)
+
+    p0, = ax.plot(xs, ys, 'o', color='b', markersize=2)
+    (p1,) = ax.plot(xp, yp, "o", color="r", markersize=2)
+    for i in range(dims * n_files):
+        xv = observation["velocity_profiles"][i]["x"]
+        yv = observation["velocity_profiles"][i]["y"]
+        (p2,) = ax.plot(xv, yv, "o", color="m", markersize=2)
+
+    ax.tick_params(direction="in", which="both")
+    ax.grid(color="0.5", linestyle=":", linewidth=0.5, which="both")
+    ax.tick_params(labelsize=18)
+    ax.set_xlabel(r"$x$ $[m]$", fontsize=18)
+    ax.set_ylabel(r"$y$ $[m]$", fontsize=18)
+    ax.set_aspect("equal", adjustable="box")
+    fig.subplots_adjust(left=0.08, right=0.99, bottom=0.15, top=0.97)
+
+    ax.legend(
+        [p0, p1, p2],
+        [
+            r'Schlieren',
+            r"Pressure taps",
+            r"Velocity profiles",
+        ],
+        loc="lower left",
+    )
+
+    fig.savefig(params["paths"]["results"] + "/observation_data.pdf")
+    plt.close(fig)
+
+
+def plot_prepared_observation_data(observation, params):
+    """Plot prepared observation data split: training, validation, test
+
+    Parameters
+    ----------
+    data : dict
+        Observation dataset with training, validation and test
+        datasets
+    params : dict
+        PIRFlow configuration.
+    """
+
+    # Plot training dataset points
+    plot_observation_data_split(
+        observation,
+        params,
+        dataset="training",
+    )
+
+    # Plot validation dataset points
+    plot_observation_data_split(
+        observation,
+        params,
+        dataset="validation",
+    )
+
+    # Plot test dataset points
+    plot_observation_data_split(
+        observation,
+        params,
+        dataset="test",
+    )
+
+
+def plot_observation_data_split(observation, params, dataset):
+    """Plot one prepared dataset split.
+
+    Parameters
+    ----------
+    x, y : array_like
+        Point coordinates.
+    params : dict
+        PIRFlow configuration.
+    dataset : {"training", "validation", "test"}
+        Split name and output filename selector.
+
+    Returns
+    -------
+    None
+        A PDF file is written to the result directory.
+    """
+
+    # Note that this function assumes that the user enabled the
+    # Schlieren, velocity profiesl and pressure taps. 
+    # TODO: make it general so that the this function works 
+    # for any kind of combination.
+
+    xs = observation["schlieren"][dataset]["X"][:, 0] 
+    ys = observation["schlieren"][dataset]["X"][:, 1]
+
+    xu = observation["velocity_profiles"]["u"][dataset]["X"][:, 0]
+    yu = observation["velocity_profiles"]["u"][dataset]["X"][:, 1]
+    xv = observation["velocity_profiles"]["v"][dataset]["X"][:, 0]
+    yv = observation["velocity_profiles"]["v"][dataset]["X"][:, 1]
+
+    xp = observation["pressure_taps"][dataset]["X"][:, 0]
+    yp = observation["pressure_taps"][dataset]["X"][:, 1]
+
+    fig, ax = plt.subplots(1, 1, num=1, figsize=(12, 4), sharey=True)
+    plt.rc("legend", fontsize=14)
+
+    (p0,) = ax.plot(xp, yp, "o", color="k", markersize=2)
+    ax.plot(xu, yu, "o", color="k", markersize=2)
+    ax.plot(xv, yv, "o", color="k", markersize=2)
+    ax.plot(xs, ys, "o", color="k", markersize=2)
+
+    ax.tick_params(direction="in", which="both")
+    ax.grid(color="0.5", linestyle=":", linewidth=0.5, which="both")
+    ax.tick_params(labelsize=18)
+    ax.set_xlabel(r"$x$ $[m]$", fontsize=18)
+    ax.set_ylabel(r"$y$ $[m]$", fontsize=18)
+    ax.set_aspect("equal", adjustable="box")
+    fig.subplots_adjust(left=0.08, right=0.99, bottom=0.15, top=0.97)
+
+    if dataset == "training":
+        ax.legend([p0], [r"Training data"], loc="lower left")
+        fig.savefig(
+            params["paths"]["results"]
+            + "/training_observations_dataset_points.pdf"
+        )
+    elif dataset == "validation":
+        ax.legend([p0], [r"Validation data"], loc="lower left")
+        fig.savefig(
+            params["paths"]["results"]
+            + "/validation_observation_dataset_points.pdf"
+        )
+    elif dataset == "test":
+        ax.legend([p0], [r"Test data"], loc="lower left")
+        fig.savefig(
+            params["paths"]["results"] 
+            + "/test_observation_dataset_points.pdf"
+        )
+    else:
+        raise ValueError(f"Unknown dataset {dataset}")
+
+    plt.close(fig)
+
+
+def plot_prepared_sampling_data(data, params):
     """Plot prepared data splits and collocation points.
 
     Parameters
@@ -27,51 +271,52 @@ def plot_prepared_data(data, params):
     """
 
     # Plot training dataset points
-    plot_dataset(
-        data["xtrain"],
-        data["ytrain"],
+    plot_sampling_data_split(
+        data["training"]["xtrain"],
+        data["training"]["ytrain"],
         params,
-        dataset='training',
+        dataset="training",
     )
 
     # Plot validation dataset points
-    if data["xval"] is not None:
-        plot_dataset(
-            data["xval"],
-            data["yval"],
+    if data["validation"]["xval"] is not None:
+        plot_sampling_data_split(
+            data["validation"]["xval"],
+            data["validation"]["yval"],
             params,
-            dataset='validation',
+            dataset="validation",
         )
 
     # Plot test dataset points
-    if data["xtest"] is not None:
-        plot_dataset(
-            data["xtest"],
-            data["ytest"],
+    if data["test"]["xtest"] is not None:
+        plot_sampling_data_split(
+            data["test"]["xtest"],
+            data["test"]["ytest"],
             params,
-            dataset='test',
+            dataset="test",
         )
 
     # Plot training data and training collocation points
     plot_target_points(
-        data["xtrain"],
-        data["ytrain"],
-        data["xftrain"],
-        data["yftrain"],
+        data["training"]["xtrain"],
+        data["training"]["ytrain"],
+        data["collocation"]["xftrain"],
+        data["collocation"]["yftrain"],
         params,
         True,
     )
 
     # Plot all data and all collocation points
     plot_target_points(
-        data["x"],
-        data["y"],
-        data["xf"],
-        data["yf"],
+        data["all"]["x"],
+        data["all"]["y"],
+        data["collocation"]["xf"],
+        data["collocation"]["yf"],
         params,
     )
 
-def plot_dataset(x, y, params, dataset):
+
+def plot_sampling_data_split(x, y, params, dataset):
     """Plot one prepared dataset split.
 
     Parameters
@@ -90,30 +335,40 @@ def plot_dataset(x, y, params, dataset):
     """
 
     fig, ax = plt.subplots(1, 1, num=1, figsize=(12, 4), sharey=True)
-    plt.rc('legend', **{'fontsize': 14})
+    plt.rc("legend", fontsize=14)
 
-    p0, = ax.plot(x, y, 'o', color='k', markersize=2)
-    ax.tick_params(direction="in", which='both')
-    ax.grid(color='0.5', linestyle=':', linewidth=0.5, which='both')
+    (p0,) = ax.plot(x, y, "o", color="k", markersize=2)
+    ax.tick_params(direction="in", which="both")
+    ax.grid(color="0.5", linestyle=":", linewidth=0.5, which="both")
     ax.tick_params(labelsize=18)
-    ax.set_xlabel(r'$x$ $[m]$', fontsize=18)
-    ax.set_ylabel(r'$y$ $[m]$', fontsize=18)
+    ax.set_xlabel(r"$x$ $[m]$", fontsize=18)
+    ax.set_ylabel(r"$y$ $[m]$", fontsize=18)
     ax.set_aspect("equal", adjustable="box")
     fig.subplots_adjust(left=0.08, right=0.99, bottom=0.15, top=0.97)
-    
-    if dataset == 'training':
-        ax.legend([p0], [r'Training data'], loc='lower left')
-        fig.savefig(params['paths']['results']+'/training_dataset_points.pdf')
-    elif dataset == 'validation':
-        ax.legend([p0], [r'Validation data'], loc='lower left')
-        fig.savefig(params['paths']['results']+'/validation_dataset_points.pdf')
-    elif dataset == 'test':
-        ax.legend([p0], [r'Test data'], loc='lower left')
-        fig.savefig(params['paths']['results']+'/test_dataset_points.pdf')
+
+    if dataset == "training":
+        ax.legend([p0], [r"Training data"], loc="lower left")
+        fig.savefig(
+            params["paths"]["results"] 
+            + "/training_sampling_dataset_points.pdf"
+        )
+    elif dataset == "validation":
+        ax.legend([p0], [r"Validation data"], loc="lower left")
+        fig.savefig(
+            params["paths"]["results"]
+            + "/validation_sampling_dataset_points.pdf"
+        )
+    elif dataset == "test":
+        ax.legend([p0], [r"Test data"], loc="lower left")
+        fig.savefig(
+            params["paths"]["results"] 
+            + "/test_sampling_dataset_points.pdf"
+        )
     else:
         raise ValueError(f"Unknown dataset {dataset}")
 
     plt.close(fig)
+
 
 def plot_target_points(x, y, xf, yf, params, training=False):
     """Plot observation and collocation coordinates together.
@@ -136,33 +391,32 @@ def plot_target_points(x, y, xf, yf, params, training=False):
     """
 
     fig, ax = plt.subplots(1, 1, num=1, figsize=(12, 4), sharey=True)
-    plt.rc('legend', **{'fontsize': 14})
+    plt.rc("legend", fontsize=14)
 
     if xf is not None or yf is not None:
-        p0, = ax.plot(xf, yf, 'o', color='darkorange', markersize=2)
-    p1, = ax.plot(x, y, 'o', color='g', markersize=2)
-    
-    ax.tick_params(direction="in", which='both')
-    ax.grid(color='0.5', linestyle=':', linewidth=0.5, which='both')
+        (p0,) = ax.plot(xf, yf, "o", color="darkorange", markersize=2)
+    (p1,) = ax.plot(x, y, "o", color="g", markersize=2)
+
+    ax.tick_params(direction="in", which="both")
+    ax.grid(color="0.5", linestyle=":", linewidth=0.5, which="both")
     ax.tick_params(labelsize=18)
-    ax.set_xlabel(r'$x$ $[m]$', fontsize=18)
-    ax.set_ylabel(r'$y$ $[m]$', fontsize=18)
+    ax.set_xlabel(r"$x$ $[m]$", fontsize=18)
+    ax.set_ylabel(r"$y$ $[m]$", fontsize=18)
     ax.set_aspect("equal", adjustable="box")
     fig.subplots_adjust(left=0.08, right=0.99, bottom=0.15, top=0.97)
 
     if xf is not None or yf is not None:
-        ax.legend([p0,p1], [r'Residual',r'Data'], loc='lower left')
+        ax.legend([p0, p1], [r"Residual", r"Data"], loc="lower left")
     else:
-        ax.legend([p1], [r'Data'], loc='best')
+        ax.legend([p1], [r"Data"], loc="best")
 
     if training:
-        fig.savefig(params['paths']['results']+'/'+
-                    'training_dataset.pdf')
+        fig.savefig(params["paths"]["results"] + "/" + "training_dataset.pdf")
     else:
-        fig.savefig(params['paths']['results']+'/'+
-                    'all_dataset.pdf')
+        fig.savefig(params["paths"]["results"] + "/" + "all_dataset.pdf")
 
     plt.close(fig)
+
 
 def plot_sampling_data(data_points, collocation_points, params):
     """Plot observation and collocation sampling groups.
@@ -182,14 +436,15 @@ def plot_sampling_data(data_points, collocation_points, params):
         PDF files are written to the result directory.
     """
 
-    plot_sampling_points(
-        data_points["X"],
-        data_points["pts_in"],
-        data_points["pts_bc"],
-        data_points["pts_grad"],
-        params,
-        False,
-    )
+    if data_points["X"] is not None:
+        plot_sampling_points(
+            data_points["X"],
+            data_points["pts_in"],
+            data_points["pts_bc"],
+            data_points["pts_grad"],
+            params,
+            False,
+        )
 
     if collocation_points["Xf"] is not None:
         plot_sampling_points(
@@ -200,6 +455,7 @@ def plot_sampling_data(data_points, collocation_points, params):
             params,
             True,
         )
+
 
 def plot_sampling_points(pall, pin, pbc, pgrad, params, collpts=False):
     """Plot interior, boundary, and gradient-focused samples.
@@ -226,36 +482,40 @@ def plot_sampling_points(pall, pin, pbc, pgrad, params, collpts=False):
     """
 
     fig, ax = plt.subplots(1, 1, num=1, figsize=(12, 4), sharey=True)
-    plt.rc('legend', **{'fontsize': 14})
+    plt.rc("legend", fontsize=14)
 
-    p0, = ax.plot(pin[:,0], pin[:,1], 'o', color='r', markersize=2)
-    p1, = ax.plot(pbc[:,0], pbc[:,1], 'o', color='b', markersize=2)
-    p2, = ax.plot(pgrad[:,0], pgrad[:,1], 'o', color='m', markersize=2)
-    #p3, = ax.plot(pall[:,0], pall[:,1], 'o', color='k', markersize=2)
+    (p0,) = ax.plot(pin[:, 0], pin[:, 1], "o", color="r", markersize=2)
+    (p1,) = ax.plot(pbc[:, 0], pbc[:, 1], "o", color="b", markersize=2)
+    (p2,) = ax.plot(pgrad[:, 0], pgrad[:, 1], "o", color="m", markersize=2)
+    # p3, = ax.plot(pall[:,0], pall[:,1], 'o', color='k', markersize=2)
 
-    ax.tick_params(direction="in", which='both')
-    ax.grid(color='0.5', linestyle=':', linewidth=0.5, which='both')
-    #ax.set_xlim(0.0, 0.0)
-    #ax.set_ylim(0.0, 0.0)
+    ax.tick_params(direction="in", which="both")
+    ax.grid(color="0.5", linestyle=":", linewidth=0.5, which="both")
+    # ax.set_xlim(0.0, 0.0)
+    # ax.set_ylim(0.0, 0.0)
     ax.tick_params(labelsize=18)
-    ax.set_xlabel(r'$x$ $[m]$', fontsize=18)
-    ax.set_ylabel(r'$y$ $[m]$', fontsize=18)
+    ax.set_xlabel(r"$x$ $[m]$", fontsize=18)
+    ax.set_ylabel(r"$y$ $[m]$", fontsize=18)
     ax.set_aspect("equal", adjustable="box")
     fig.subplots_adjust(left=0.08, right=0.99, bottom=0.15, top=0.97)
 
-    ax.legend([p0,p1,p2], [r'Inner',
-                           r'Boundary',
-                           r'$\left|\nabla \rho\right|^{\alpha}$'], 
-                           loc='lower left')
-    
+    ax.legend(
+        [p0, p1, p2],
+        [r"Inner", r"Boundary", r"$\left|\nabla \rho\right|^{\alpha}$"],
+        loc="lower left",
+    )
+
     if collpts:
-        fig.savefig(params['paths']['results']+'/'+
-                    'collocation_dataset_points.pdf')
+        fig.savefig(
+            params["paths"]["results"] + "/" + "collocation_dataset_points.pdf"
+        )
     else:
-        fig.savefig(params['paths']['results']+'/'+
-                    'data_dataset_points.pdf')
+        fig.savefig(
+            params["paths"]["results"] + "/" + "data_dataset_points.pdf"
+        )
 
     plt.close(fig)
+
 
 def plot_history_training(model, params):
     """Plot training and validation loss histories.
@@ -279,11 +539,12 @@ def plot_history_training(model, params):
     l_total = model.get_total_loss()
     l_val = model.get_validation_data_loss()
     n_epoch = model.get_n_epoch()
-    
+
     # Plot losses
     plot_losses(l_data, l_res, l_total, n_epoch, params)
     # Plot validation loss
     plot_validation_loss(l_data, l_val, n_epoch, params)
+
 
 def plot_losses(l_data, l_res, l_total, n_epoch, params):
     """Plot data, residual, and total training losses.
@@ -308,29 +569,34 @@ def plot_losses(l_data, l_res, l_total, n_epoch, params):
     """
 
     fig = plt.figure()
-    ax = fig.add_subplot(1,1,1)
-    plt.rc('legend', **{'fontsize': 14})
+    ax = fig.add_subplot(1, 1, 1)
+    plt.rc("legend", fontsize=14)
 
     # Epochs calculation
     epochs = np.arange(0, n_epoch, 1)
 
-    p0, = ax.semilogy(epochs, l_data, '-', color='b', linewidth=2)
-    if params['run']['model'] == 'pinn': 
-        p1, = ax.semilogy(epochs, l_res, '-', color='r', linewidth=2)
-        p2, = ax.semilogy(epochs, l_total, '-', color='k', linewidth=2)
-        ax.legend([p0,p1,p2], [r'Data loss',r'Residual loss',r'Total loss'], loc='best')
+    (p0,) = ax.semilogy(epochs, l_data, "-", color="b", linewidth=2)
+    if params["run"]["model"] == "pinn":
+        (p1,) = ax.semilogy(epochs, l_res, "-", color="r", linewidth=2)
+        (p2,) = ax.semilogy(epochs, l_total, "-", color="k", linewidth=2)
+        ax.legend(
+            [p0, p1, p2],
+            [r"Data loss", r"Residual loss", r"Total loss"],
+            loc="best",
+        )
     else:
-        ax.legend([p0], [r'Data loss'], loc='best')
+        ax.legend([p0], [r"Data loss"], loc="best")
 
-    ax.tick_params(direction="in", which='both')
+    ax.tick_params(direction="in", which="both")
     fig.subplots_adjust(left=0.146, right=0.97, bottom=0.124, top=0.97)
-    ax.grid(color='0.5', linestyle=':', linewidth=0.5, which='both')
+    ax.grid(color="0.5", linestyle=":", linewidth=0.5, which="both")
     ax.set_ylim(0.0001, 200.0)
     ax.tick_params(labelsize=18)
-    ax.set_xlabel(r'$Epochs$', fontsize=18)
-    ax.set_ylabel(r'$Losses$', fontsize=18)
-    fig.savefig(params['paths']['results']+'/training_losses.pdf')
+    ax.set_xlabel(r"$Epochs$", fontsize=18)
+    ax.set_ylabel(r"$Losses$", fontsize=18)
+    fig.savefig(params["paths"]["results"] + "/training_losses.pdf")
     plt.close()
+
 
 def plot_validation_loss(l_train, l_val, n_epoch, params):
     """Plot training-data and validation losses.
@@ -351,27 +617,30 @@ def plot_validation_loss(l_train, l_val, n_epoch, params):
     None
         A PDF file is written to the result directory.
     """
-    
+
     fig = plt.figure()
-    ax = fig.add_subplot(1,1,1)
-    plt.rc('legend', **{'fontsize': 14})
+    ax = fig.add_subplot(1, 1, 1)
+    plt.rc("legend", fontsize=14)
 
     # Epochs calculation
     epochs = np.arange(0, n_epoch, 1)
 
-    p0, = ax.semilogy(epochs, l_train, '-', color='b', linewidth=2)
-    p1, = ax.semilogy(epochs, l_val, '-', color='r', linewidth=2)
-    ax.legend([p0,p1], [r'Training data loss',r'Validation data loss'], loc='best')
+    (p0,) = ax.semilogy(epochs, l_train, "-", color="b", linewidth=2)
+    (p1,) = ax.semilogy(epochs, l_val, "-", color="r", linewidth=2)
+    ax.legend(
+        [p0, p1], [r"Training data loss", r"Validation data loss"], loc="best"
+    )
 
-    ax.tick_params(direction="in", which='both')
+    ax.tick_params(direction="in", which="both")
     fig.subplots_adjust(left=0.146, right=0.97, bottom=0.124, top=0.97)
-    ax.grid(color='0.5', linestyle=':', linewidth=0.5, which='both')
+    ax.grid(color="0.5", linestyle=":", linewidth=0.5, which="both")
     ax.set_ylim(0.0001, 200.0)
     ax.tick_params(labelsize=18)
-    ax.set_xlabel(r'$Epochs$', fontsize=18)
-    ax.set_ylabel(r'$Losses$', fontsize=18)
-    fig.savefig(params['paths']['results']+'/validation_loss.pdf')
+    ax.set_xlabel(r"$Epochs$", fontsize=18)
+    ax.set_ylabel(r"$Losses$", fontsize=18)
+    fig.savefig(params["paths"]["results"] + "/validation_loss.pdf")
     plt.close()
+
 
 def plot_field_pyvista(
     mesh,
@@ -444,9 +713,7 @@ def plot_field_pyvista(
             mesh_plot = mesh_plot.cell_data_to_point_data()
 
         if field not in mesh_plot.array_names:
-            raise ValueError(
-                f"Field '{field}' was not found in the mesh."
-            )
+            raise ValueError(f"Field '{field}' was not found in the mesh.")
 
         scalar_name = field
         arr = np.asarray(mesh_plot[scalar_name])
@@ -461,7 +728,9 @@ def plot_field_pyvista(
         # Plot provided values by attaching them to the mesh copy
         values = np.asarray(values)
 
-        scalar_name = f"{field}_{comp}_{suffix}" if suffix else f"{field}_{comp}"
+        scalar_name = (
+            f"{field}_{comp}_{suffix}" if suffix else f"{field}_{comp}"
+        )
 
         if values.ndim == 1:
             if values.shape[0] != mesh_plot.n_points:
@@ -549,6 +818,7 @@ def plot_field_pyvista(
     pl.save_graphic(os.path.join(out_dir, fname))
     pl.close()
 
+
 def plot_simulation_flow_pyvista(mesh, params):
     """Plot all configured reference simulation fields.
 
@@ -574,6 +844,7 @@ def plot_simulation_flow_pyvista(mesh, params):
             values=None,
             suffix="sim",
         )
+
 
 def plot_predicted_flow_pyvista(mesh, predicted_fields, params):
     """Plot all configured predicted fields.
@@ -622,6 +893,7 @@ def plot_predicted_flow_pyvista(mesh, predicted_fields, params):
             suffix="pred",
         )
 
+
 def plot_error_flow_pyvista(
     mesh,
     error_fields,
@@ -648,16 +920,15 @@ def plot_error_flow_pyvista(
     """
 
     valid_error_types = [
-        #"error",
-        #"abs_error",
-        #"rel_error",
+        # "error",
+        # "abs_error",
+        # "rel_error",
         "abs_error_01",
     ]
 
     if error_type not in valid_error_types:
         raise ValueError(
-            f"Unknown error_type '{error_type}'. "
-            f"Use one of: {valid_error_types}."
+            f"Unknown error_type '{error_type}'. Use one of: {valid_error_types}."
         )
 
     variables = get_flow_variables(params)
@@ -684,7 +955,7 @@ def plot_error_flow_pyvista(
         # Variable names
         variable = variables[ifield]
         # Also created in compute_error_fields
-        error_name = f"{variable}_{error_type}" 
+        error_name = f"{variable}_{error_type}"
 
         if error_name not in error_fields:
             raise KeyError(
@@ -695,15 +966,14 @@ def plot_error_flow_pyvista(
 
         if variable not in error_labels:
             raise KeyError(
-                f"No error label has been defined for variable "
-                f"'{variable}'."
+                f"No error label has been defined for variable '{variable}'."
             )
 
         values = error_fields[error_name]
         clabel = error_labels[variable]
 
         if error_type == "abs_error_01":
-            clim = (0.0, 1.0) # graph scale
+            clim = (0.0, 1.0)  # graph scale
         else:
             clim = None
 
@@ -720,7 +990,8 @@ def plot_error_flow_pyvista(
                 "bwr",
             ),
         )
-        
+
+
 def get_flow_variables(params):
     """Return flow-variable names in post-processing order.
 
