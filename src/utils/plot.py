@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: MIT
+"""Plot observations, prepared datasets, training histories, and flow fields."""
+
 import os
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,12 +12,12 @@ rc("text", usetex=False)
 
 
 def plot_schlieren_image(schlieren, params):
-    """Plot schlieren observations and save them as a PDF.
+    """Plot Schlieren observations and save them as a PDF.
 
     Parameters
     ----------
     schlieren : dict
-        Coordinates under "x" and "y", and schlieren values under
+        Coordinates under ``"x"`` and ``"y"``, and Schlieren values under
         the configured gradient-type key.
     params : dict
         PIRFlow configuration.
@@ -83,20 +85,22 @@ def plot_schlieren_image(schlieren, params):
     plt.close(fig)
 
 def plot_observation_data(observation, params):
-    """Plot observation dataset
+    """Plot the locations of raw observations for all three modalities.
 
     Parameters
     ----------
-    data : dict
-        Observation dataset
+    observation : dict
+        Raw ``"schlieren"`` and ``"pressure_taps"`` coordinate mappings,
+        plus a ``"velocity_profiles"`` list of coordinate mappings.
+        All three modalities are required, each with ``"x"`` and ``"y"``
+        coordinates.
     params : dict
         PIRFlow configuration.
 
     Returns
     -------
     None
-        A PDF file is written to the result directory.
-
+        ``observation_data.pdf`` is written to the results directory.
     """
 
     # Note that this function assumes that the user enabled the
@@ -146,16 +150,25 @@ def plot_observation_data(observation, params):
     plt.close(fig)
 
 
-def plot_prepared_observation_data(observation, params):
-    """Plot prepared observation data split: training, validation, test
+def plot_prepared_observation_datasets(observation, params):
+    """Plot training, validation, and test observation locations.
 
     Parameters
     ----------
-    data : dict
-        Observation dataset with training, validation and test
-        datasets
+    observation : dict
+        Prepared observations containing ``"schlieren"``,
+        ``"velocity_profiles"``, and ``"pressure_taps"``. Schlieren and
+        pressure-tap mappings contain ``"training"``, ``"validation"``,
+        and ``"test"`` subsets. Velocity profiles contain ``"u"`` and
+        ``"v"`` mappings with those subsets. Each subset stores
+        coordinates under ``"X"``; all three modalities are required.
     params : dict
         PIRFlow configuration.
+
+    Returns
+    -------
+    None
+        A PDF for each subset is written to the results directory.
     """
 
     # Plot training dataset points
@@ -181,12 +194,15 @@ def plot_prepared_observation_data(observation, params):
 
 
 def plot_observation_data_split(observation, params, dataset):
-    """Plot one prepared dataset split.
+    """Plot one observation subset across all three modalities.
 
     Parameters
     ----------
-    x, y : array_like
-        Point coordinates.
+    observation : dict
+        Prepared observations for all three modalities. Schlieren and
+        pressure-tap coordinates are read from ``[dataset]["X"]``;
+        velocity-profile coordinates are read from
+        ``[component][dataset]["X"]`` for both ``"u"`` and ``"v"``.
     params : dict
         PIRFlow configuration.
     dataset : {"training", "validation", "test"}
@@ -254,13 +270,21 @@ def plot_observation_data_split(observation, params, dataset):
     plt.close(fig)
 
 
-def plot_prepared_sampling_data(data, params):
-    """Plot prepared data splits and collocation points.
+def plot_prepared_sampling_datasets(data, collocation, params):
+    """Plot prepared CFD splits and their associated collocation points.
 
     Parameters
     ----------
     data : dict
-        Prepared dataset mapping.
+        Prepared CFD mappings under ``"all"``, ``"training"``,
+        ``"validation"``, and ``"test"``. Coordinate keys use the
+        ``"train"``, ``"val"``, and ``"test"`` suffixes for each split.
+        Validation and test plots are skipped when their x coordinates
+        are ``None``.
+    collocation : dict
+        Prepared physical coordinates under ``"xf"``, ``"yf"``,
+        ``"xftrain"``, and ``"yftrain"``. Coordinate pairs may both be
+        ``None`` when collocation is disabled.
     params : dict
         PIRFlow configuration.
 
@@ -300,8 +324,8 @@ def plot_prepared_sampling_data(data, params):
     plot_target_points(
         data["training"]["xtrain"],
         data["training"]["ytrain"],
-        data["collocation"]["xftrain"],
-        data["collocation"]["yftrain"],
+        collocation["xftrain"],
+        collocation["yftrain"],
         params,
         True,
     )
@@ -310,14 +334,14 @@ def plot_prepared_sampling_data(data, params):
     plot_target_points(
         data["all"]["x"],
         data["all"]["y"],
-        data["collocation"]["xf"],
-        data["collocation"]["yf"],
+        collocation["xf"],
+        collocation["yf"],
         params,
     )
 
 
 def plot_sampling_data_split(x, y, params, dataset):
-    """Plot one prepared dataset split.
+    """Plot the CFD point locations in one prepared dataset split.
 
     Parameters
     ----------
@@ -371,12 +395,12 @@ def plot_sampling_data_split(x, y, params, dataset):
 
 
 def plot_target_points(x, y, xf, yf, params, training=False):
-    """Plot observation and collocation coordinates together.
+    """Plot CFD data and collocation coordinates together.
 
     Parameters
     ----------
     x, y : array_like
-        Observation coordinates.
+        Physical CFD data coordinates.
     xf, yf : array_like or None
         Collocation coordinates.
     params : dict
@@ -419,14 +443,17 @@ def plot_target_points(x, y, xf, yf, params, training=False):
 
 
 def plot_sampling_data(data_points, collocation_points, params):
-    """Plot observation and collocation sampling groups.
+    """Plot CFD data and collocation sampling groups.
 
     Parameters
     ----------
     data_points : dict
-        Observation coordinates and point groups.
+        CFD coordinates under ``"X"`` and sampling groups under
+        ``"pts_in"``, ``"pts_bc"``, and ``"pts_grad"``. Plotting is
+        skipped when ``"X"`` is ``None``.
     collocation_points : dict
-        Collocation coordinates and point groups.
+        Collocation coordinates under ``"Xf"`` and the same sampling
+        group keys. Plotting is skipped when ``"Xf"`` is ``None``.
     params : dict
         PIRFlow configuration.
 

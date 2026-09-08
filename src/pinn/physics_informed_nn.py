@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: MIT
+"""Wrap flow networks with data preparation, physics losses, and training."""
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -21,17 +23,11 @@ class PhysicsInformedNN(nn.Module):
     def __init__(
         self,
         network,
-        xdata, ydata, rhodata, udata, vdata, pdata, # data points
-        xf, yf, # Collocation points (only coordinates)
         params,
-        mutdata=None, # for rans
-        xval=None,
-        yval=None,
-        rhoval=None,
-        uval=None,
-        vval=None,
-        pval=None,
-        mutval=None,
+        *,
+        cfd_datasets=None,
+        observation_datasets=None,
+        collocation_dataset=None,
     ):
         """Initialize model data, physical scales, graphs, and optimizers.
 
@@ -39,22 +35,53 @@ class PhysicsInformedNN(nn.Module):
         ----------
         network : BaseNetwork
             MLP or GNN used to predict flow variables.
-        xdata, ydata : numpy.ndarray
-            Training coordinates.
-        rhodata, udata, vdata, pdata : numpy.ndarray
-            Training flow variables.
-        xf, yf : numpy.ndarray or None
-            Collocation coordinates for physics-informed training.
         params : dict
-            PIRFlow configuration.
-        mutdata : numpy.ndarray or None, optional
-            Training turbulent viscosity for RANS.
-        xval, yval : numpy.ndarray or None, optional
-            Validation coordinates.
-        rhoval, uval, vval, pval, mutval : numpy.ndarray or None, optional
-            Validation flow variables.
+            PIRFlow configuration, including the problem type, equation,
+            reference scales, network settings, and optimizer options.
+        cfd_datasets : dict or None, optional
+            Prepared CFD datasets containing ``"training"`` and
+            ``"validation"`` mappings. Coordinate and flow-field keys use
+            the ``"train"`` and ``"val"`` suffixes, respectively, such as
+            ``"xtrain"`` and ``"rhoval"``. Forward problems require training
+            data; validation is enabled when all required fields are present.
+        observation_datasets : dict or None, optional
+            Prepared ``"schlieren"``, ``"velocity_profiles"``, and
+            ``"pressure_taps"`` datasets. Missing modalities are allowed.
+            These datasets are read but are not yet used for training.
+        collocation_dataset : dict or None, optional
+            Mapping containing physical collocation coordinates under
+            ``"xf"`` and ``"yf"``. The mapping is currently required even
+            for supervised models, where both values may be ``None``.
         """
         super().__init__()
+
+        # CFD datasets
+        cfd_training = None
+        cfd_validation = None
+
+        if cfd_datasets is not None:
+            training = cfd_datasets["training"]
+            validation = cfd_datasets["validation"]
+
+            if training["xtrain"] is not None:
+                cfd_training = training
+
+            if validation["xval"] is not None:
+                cfd_validation = validation
+
+        # Observation datasets
+        if observation_datasets is None:
+            observation_datasets = {}
+
+        # Observation: Modalities
+        schlieren = observation_datasets.get("schlieren")
+        velocity_profiles = observation_datasets.get("velocity_profiles")
+        pressure_taps = observation_datasets.get("pressure_taps")
+
+        # Collocation dataset
+        collocation = None
+        if collocation_dataset is not None:
+            collocation = collocation_dataset
 
         # Device selection
         self.device_str = params['run'].get("device", None)
@@ -79,6 +106,8 @@ class PhysicsInformedNN(nn.Module):
         # to the selected device
         self.to(self.device)
 
+        # Problem
+        self.problem = params["run"]["problem"]
         # Model
         self.model = params['run']['model']
         # Equation
@@ -175,38 +204,67 @@ class PhysicsInformedNN(nn.Module):
             self.mu0star = float(phys_cfg['sutherland']['mu0']) / self.muref
 
         # Training data
-        _, self.x, self.y, self.rho, self.u, self.v, self.p, self.mut = \
-            self.prepare_torch_supervised_data(xdata, ydata, rhodata, udata, 
-                                               vdata, pdata, mutdata, True)
+        if (self.problem == "forward" and cfd_training is not None):
+            (
+                _, 
+                self.xtrain, 
+                self.ytrain, 
+                self.rhotrain, 
+                self.utrain, 
+                self.vtrain, 
+                self.ptrain, 
+                self.muttrain 
+            ) = self._prepare_cfd_split(
+                    cfd_training, 
+                    suffix="train", 
+                    fit_scale=True
+                )
+        else:
+            self.xtrain = None
+            self.ytrain = None 
+            self.rhotrain = None
+            self.utrain = None
+            self.vtrain = None
+            self.ptrain = None
+            self.muttrain = None
 
         # Validation
-        # These variables are always required for validation.
-        validation_values = [
-            xval,
-            yval,
-            rhoval,
-            uval,
-            vval,
-            pval,
+        # Fields required for CFD validation.
+        validation_fields = [
+            "xval",
+            "yval",
+            "rhoval",
+            "uval",
+            "vval",
+            "pval",
         ]
 
-        # Turbulent viscosity validation data are additionally
-        # required for the rans equations.
         if self.eq == "rans":
-            validation_values.append(mutval)
+            validation_fields.append("mutval")
 
-        self.has_validation = all(
-            value is not None
-            for value in validation_values
-        )        
+        self.has_validation = (
+            cfd_validation is not None
+            and all(
+                cfd_validation[field] is not None
+                for field in validation_fields
+            )
+        )
 
-        if self.has_validation:
+        if  (self.problem == "forward" and self.has_validation):
             (
-                _, self.xval, self.yval, 
-                self.rhoval, self.uval, self.vval, 
-                self.pval, self.mutval
-            ) = self.prepare_torch_supervised_data(xval, yval, rhoval, uval, 
-                                                   vval, pval, mutval, False)
+                 _,
+                self.xval,
+                self.yval,
+                self.rhoval,
+                self.uval,
+                self.vval,
+                self.pval,
+                self.mutval,
+            ) = self._prepare_cfd_split(
+                cfd_validation,
+                suffix="val",
+                fit_scale=False,
+            )
         else:
             self.xval = None
             self.yval = None
@@ -217,6 +275,8 @@ class PhysicsInformedNN(nn.Module):
             self.mutval = None
 
         # Collocation
+        xf = collocation["xf"]
+        yf = collocation["yf"]
         if xf is not None and yf is not None and self.model == 'pinn':
             # Non-dimensional coordiantes (collocation points for PINNs)
             xfstar, yfstar = self.get_nondimensional_coord(xf, yf)
@@ -233,7 +293,7 @@ class PhysicsInformedNN(nn.Module):
 
         # Coordinates used by the PINN/GNN
         # Data coordinates
-        self.X_data = torch.cat([self.x, self.y], dim=1)
+        self.X_data = torch.cat([self.xtrain, self.ytrain], dim=1)
         self.n_data = self.X_data.shape[0]
 
         # Collocation coordinates
@@ -301,7 +361,6 @@ class PhysicsInformedNN(nn.Module):
             self.X_graph_val = None
             self.edge_index_val = None
             self.edge_attr_val = None
-
 
 		# Optimizers
         # Adam
@@ -761,7 +820,48 @@ class PhysicsInformedNN(nn.Module):
                 mutd.cpu().numpy()
             )
 
-    def prepare_torch_supervised_data(self, xdata, ydata, rhodata, udata,
+    def _prepare_cfd_split(self, split, suffix, fit_scale=False):
+        """Convert one prepared CFD split into nondimensional model tensors.
+
+        Parameters
+        ----------
+        split : dict or None
+            Physical coordinate and flow-field arrays with shape ``(N, 1)``.
+            Required keys are ``x``, ``y``, ``rho``, ``u``, ``v``, and ``p``,
+            each followed by ``suffix``. The corresponding ``mut`` key is
+            required for RANS. If ``None``, no tensors are prepared.
+        suffix : str
+            Dataset suffix, such as ``"train"``, ``"val"``, or ``"test"``.
+        fit_scale : bool, optional
+            Whether to fit the RANS viscosity scale from this split.
+            Otherwise, reuse the scale fitted from the training data.
+
+        Returns
+        -------
+        tuple or None
+            ``(X, x, y, rho, u, v, p, mut)`` on the model device, where
+            ``X`` has shape ``(N, 2)`` and the remaining tensors have shape
+            ``(N, 1)``. Coordinates and flow fields are nondimensional;
+            RANS viscosity is additionally divided by ``mut_scale``.
+            The ``mut`` entry is ``None`` for Euler, and the entire return
+            value is ``None`` when ``split`` is ``None``.
+        """
+
+        if split is None:
+                return None
+
+        return self._prepare_torch_supervised_data(
+            xdata=split[f"x{suffix}"],
+            ydata=split[f"y{suffix}"],
+            rhodata=split[f"rho{suffix}"],
+            udata=split[f"u{suffix}"],
+            vdata=split[f"v{suffix}"],
+            pdata=split[f"p{suffix}"],
+            mutdata=split.get(f"mut{suffix}"),
+            fit_scale=fit_scale,
+        )
+
+    def _prepare_torch_supervised_data(self, xdata, ydata, rhodata, udata,
                                       vdata, pdata, mutdata=None, 
                                       fit_scale=False):
         """Nondimensionalize supervised arrays and convert them to tensors.
@@ -769,18 +869,32 @@ class PhysicsInformedNN(nn.Module):
         Parameters
         ----------
         xdata, ydata : numpy.ndarray
-            Physical coordinates.
+            Physical coordinate columns with shape ``(N, 1)``.
         rhodata, udata, vdata, pdata : numpy.ndarray
-            Physical flow variables.
+            Physical density, velocity components, and pressure, each with
+            shape ``(N, 1)``.
         mutdata : numpy.ndarray or None, optional
-            Physical turbulent viscosity for RANS.
+            Physical turbulent viscosity with shape ``(N, 1)``. Required
+            for RANS and ignored for Euler.
         fit_scale : bool, optional
-            Whether to fit the RANS viscosity scale from these data.
+            Whether to fit ``mut_scale`` from the 95th percentile of the
+            nondimensional RANS viscosity, falling back to 1.0 if it is
+            nonpositive. Otherwise, reuse the previously fitted scale.
 
         Returns
         -------
         tuple
-            Coordinate matrix, coordinate columns, and field tensors.
+            ``(Xdata, x, y, rho, u, v, p, mut)`` as float32 tensors on the
+            model device. ``Xdata`` has shape ``(N, 2)`` and the remaining
+            tensors have shape ``(N, 1)``. Coordinates and flow fields are
+            nondimensional; RANS viscosity is additionally divided by
+            ``mut_scale``. The ``mut`` entry is ``None`` for Euler.
+
+        Raises
+        ------
+        ValueError
+            If RANS viscosity is missing, or if ``fit_scale`` is false and
+            no viscosity scale has been fitted.
         """
 
         # Non-dimensional data
