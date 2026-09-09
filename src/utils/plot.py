@@ -139,7 +139,7 @@ def plot_observation_data(observation, params):
     ax.legend(
         [p0, p1, p2],
         [
-            r'Schlieren',
+            r"Schlieren",
             r"Pressure taps",
             r"Velocity profiles",
         ],
@@ -295,12 +295,13 @@ def plot_prepared_sampling_datasets(data, collocation, params):
     """
 
     # Plot training dataset points
-    plot_sampling_data_split(
-        data["training"]["xtrain"],
-        data["training"]["ytrain"],
-        params,
-        dataset="training",
-    )
+    if data["training"]["xtrain"] is not None:
+        plot_sampling_data_split(
+            data["training"]["xtrain"],
+            data["training"]["ytrain"],
+            params,
+            dataset="training",
+        )
 
     # Plot validation dataset points
     if data["validation"]["xval"] is not None:
@@ -321,24 +322,25 @@ def plot_prepared_sampling_datasets(data, collocation, params):
         )
 
     # Plot training data and training collocation points
-    plot_target_points(
-        data["training"]["xtrain"],
-        data["training"]["ytrain"],
-        collocation["xftrain"],
-        collocation["yftrain"],
-        params,
-        True,
-    )
+    if data["training"]["xtrain"] is not None:
+        plot_target_points(
+            data["training"]["xtrain"],
+            data["training"]["ytrain"],
+            collocation["xftrain"],
+            collocation["yftrain"],
+            params,
+            True,
+        )
 
     # Plot all data and all collocation points
-    plot_target_points(
-        data["all"]["x"],
-        data["all"]["y"],
-        collocation["xf"],
-        collocation["yf"],
-        params,
-    )
-
+    if data["all"]["x"] is not None:
+        plot_target_points(
+            data["all"]["x"],
+            data["all"]["y"],
+            collocation["xf"],
+            collocation["yf"],
+            params,
+        )
 
 def plot_sampling_data_split(x, y, params, dataset):
     """Plot the CFD point locations in one prepared dataset split.
