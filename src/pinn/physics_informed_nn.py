@@ -55,34 +55,6 @@ class PhysicsInformedNN(nn.Module):
         """
         super().__init__()
 
-        # CFD datasets
-        cfd_training = None
-        cfd_validation = None
-
-        if cfd_datasets is not None:
-            training = cfd_datasets["training"]
-            validation = cfd_datasets["validation"]
-
-            if training["xtrain"] is not None:
-                cfd_training = training
-
-            if validation["xval"] is not None:
-                cfd_validation = validation
-
-        # Observation datasets
-        if observation_datasets is None:
-            observation_datasets = {}
-
-        # Observation: Modalities
-        schlieren = observation_datasets.get("schlieren")
-        velocity_profiles = observation_datasets.get("velocity_profiles")
-        pressure_taps = observation_datasets.get("pressure_taps")
-
-        # Collocation dataset
-        collocation = None
-        if collocation_dataset is not None:
-            collocation = collocation_dataset
-
         # Device selection
         self.device_str = params['run'].get("device", None)
         if self.device_str is None:
@@ -203,33 +175,35 @@ class PhysicsInformedNN(nn.Module):
             self.Sstar  = float(phys_cfg['sutherland']['S']) / self.Tref
             self.mu0star = float(phys_cfg['sutherland']['mu0']) / self.muref
 
-        # Training data
-        if (self.problem == "forward" and cfd_training is not None):
-            (
-                _, 
-                self.xtrain, 
-                self.ytrain, 
-                self.rhotrain, 
-                self.utrain, 
-                self.vtrain, 
-                self.ptrain, 
-                self.muttrain 
-            ) = self._prepare_cfd_split(
-                    cfd_training, 
-                    suffix="train", 
-                    fit_scale=True
-                )
-        else:
-            self.xtrain = None
-            self.ytrain = None 
-            self.rhotrain = None
-            self.utrain = None
-            self.vtrain = None
-            self.ptrain = None
-            self.muttrain = None
+        # CFD datasets
+        cfd_training = cfd_validation = None
 
-        # Validation
-        # Fields required for CFD validation.
+        if cfd_datasets is not None:
+            cfd_training = cfd_datasets["training"]
+            cfd_validation = cfd_datasets["validation"]
+
+        # CFD training data
+        if (
+            self.problem == "forward"
+            and cfd_training is not None
+            and cfd_training["xtrain"] is not None
+        ):
+            (
+                _,
+                self.xtrain,
+                self.ytrain,
+                self.rhotrain,
+                self.utrain,
+                self.vtrain,
+                self.ptrain,
+                self.muttrain,
+            ) = self._prepare_cfd_split(
+                cfd_training,
+                suffix="train",
+                fit_scale=True,
+            )
+
+        # CFD validation data
         validation_fields = [
             "xval",
             "yval",
@@ -250,9 +224,9 @@ class PhysicsInformedNN(nn.Module):
             )
         )
 
-        if  (self.problem == "forward" and self.has_validation):
+        if self.problem == "forward" and self.has_validation:
             (
-                 _,
+                _,
                 self.xval,
                 self.yval,
                 self.rhoval,
@@ -265,31 +239,30 @@ class PhysicsInformedNN(nn.Module):
                 suffix="val",
                 fit_scale=False,
             )
-        else:
-            self.xval = None
-            self.yval = None
-            self.rhoval = None
-            self.uval = None
-            self.vval = None
-            self.pval = None
-            self.mutval = None
 
-        # Collocation
-        xf = collocation["xf"]
-        yf = collocation["yf"]
-        if xf is not None and yf is not None and self.model == 'pinn':
-            # Non-dimensional coordiantes (collocation points for PINNs)
-            xfstar, yfstar = self.get_nondimensional_coord(xf, yf)
-            # Data coordiantes
-            Xf = np.concatenate([xfstar, yfstar], 1)
-            # Spatial coordinates
-            self.Xf = torch.tensor(Xf, dtype=torch.float32, device=self.device)
-            self.xf = self.Xf[:,0:1]
-            self.yf = self.Xf[:,1:2]
-        else:
-            self.Xf = None
-            self.xf = None
-            self.yf = None
+        # Observation datasets
+        self.obs_train = {}
+        self.obs_validation = {}
+        if (self.problem == "inverse" ):
+
+            # Observation training data
+            self.obs_train = self._prepare_observation_split(
+                observation_datasets,
+                subset="training",
+            )
+
+            # Observation validation data
+            self.obs_val = self._prepare_observation_split(
+                observation_datasets,
+                subset="validation",
+            )
+
+        # Collocation dataset
+        (
+            _, 
+            self.xf, 
+            self.yf 
+        ) = self._prepare_torch_collocation_data(collocation_dataset) 
 
         # Coordinates used by the PINN/GNN
         # Data coordinates
@@ -297,8 +270,11 @@ class PhysicsInformedNN(nn.Module):
         self.n_data = self.X_data.shape[0]
 
         # Collocation coordinates
-        if self.model == "pinn" and self.Xf is not None:
-            self.X_res = self.Xf
+        if (self.model == "pinn" 
+            and self.xf is not None 
+            and self.yf is not None
+        ):
+            self.X_res = torch.cat([self.xf, self.yf], dim=1)
             self.n_res = self.X_res.shape[0]
         else:
             self.X_res = None
@@ -820,7 +796,7 @@ class PhysicsInformedNN(nn.Module):
                 mutd.cpu().numpy()
             )
 
-    def _prepare_cfd_split(self, split, suffix, fit_scale=False):
+    def _prepare_cfd_split(self, cfd_datasets, suffix, fit_scale=False):
         """Convert one prepared CFD split into nondimensional model tensors.
 
         Parameters
@@ -847,21 +823,21 @@ class PhysicsInformedNN(nn.Module):
             value is ``None`` when ``split`` is ``None``.
         """
 
-        if split is None:
-                return None
+        if cfd_datasets is None and self.problem == "inverse":
+                return (None,) * 8 
 
-        return self._prepare_torch_supervised_data(
-            xdata=split[f"x{suffix}"],
-            ydata=split[f"y{suffix}"],
-            rhodata=split[f"rho{suffix}"],
-            udata=split[f"u{suffix}"],
-            vdata=split[f"v{suffix}"],
-            pdata=split[f"p{suffix}"],
-            mutdata=split.get(f"mut{suffix}"),
+        return self._prepare_torch_cfd_data(
+            xdata=cfd_datasets[f"x{suffix}"],
+            ydata=cfd_datasets[f"y{suffix}"],
+            rhodata=cfd_datasets[f"rho{suffix}"],
+            udata=cfd_datasets[f"u{suffix}"],
+            vdata=cfd_datasets[f"v{suffix}"],
+            pdata=cfd_datasets[f"p{suffix}"],
+            mutdata=cfd_datasets.get(f"mut{suffix}"),
             fit_scale=fit_scale,
         )
 
-    def _prepare_torch_supervised_data(self, xdata, ydata, rhodata, udata,
+    def _prepare_torch_cfd_data(self, xdata, ydata, rhodata, udata,
                                       vdata, pdata, mutdata=None, 
                                       fit_scale=False):
         """Nondimensionalize supervised arrays and convert them to tensors.
@@ -939,7 +915,70 @@ class PhysicsInformedNN(nn.Module):
             mut = None
 
         return Xdata, x, y, rho, u, v, p, mut
-    
+
+    def _prepare_torch_collocation_data(self, collocation_dataset):
+
+        if collocation_dataset is None or self.model == "pinn":
+            xf = collocation_dataset["xf"]
+            yf = collocation_dataset["yf"]
+
+            # Non-dimensional coordiantes (collocation points for PINNs)
+            xfstar, yfstar = self.get_nondimensional_coord(xf, yf)
+            # Data coordiantes
+            Xf = np.concatenate([xfstar, yfstar], 1)
+            # Spatial coordinates
+            Xf = torch.tensor(Xf, dtype=torch.float32, device=self.device)
+            xf = Xf[:,0:1]
+            yf = Xf[:,1:2]
+        else:
+            Xf = None
+            xf = None
+            yf = None
+
+        return Xf, xf, yf
+
+    def _prepare_observation_split(
+        self, 
+        observation_datasets,
+        subset,
+    ):
+        """Prepare one observation split as a mapping of modality tensors.
+
+        Parameters
+        ----------
+        observation_datasets : dict or None
+            Output of prepare_observation_datasets(). 
+            Schlieren, velocity profiles and pressure taps
+        subset : {"training", "validation", "test"}
+            Dataset split to prepare.
+
+        Returns
+        -------
+        dict
+            Available nonempty modalities, each containing "X" and "value".
+        """
+
+        if subset not in ("training", "validation", "test"):
+            raise ValueError(f"Unknown observation subset: {subset}")
+
+        if observation_datasets is None:
+            return {}
+
+        velocity_profiles = observation_datasets.get("velocity_profiles")
+        if velocity_profiles is None:
+            velocity_profiles = {}
+
+        pressure_taps = observation_datasets.get("pressure_taps")
+
+
+        return {}
+
+    def _prepare_torch_observation_data(
+        self,   
+    ):
+
+        return {}
+        
     def get_dimensional_data(self, rho, u, v, p, mut=None):
         """Restore dimensional units to nondimensional flow fields.
 
