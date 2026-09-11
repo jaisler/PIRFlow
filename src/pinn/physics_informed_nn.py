@@ -968,14 +968,37 @@ class PhysicsInformedNN(nn.Module):
         if velocity_profiles is None:
             velocity_profiles = {}
 
+        velocity_u = velocity_profiles.get("u")
+        obs_u_subset = velocity_u(subset)
+
+        velocity_v = velocity_profiles.get("v")        
+        obs_v_subset = velocity_v(subset)
+
         pressure_taps = observation_datasets.get("pressure_taps")
+        obs_pt_subset = pressure_taps.get(subset)
 
+        schlieren = observation_datasets.get("schlieren")
+        obs_sch_subest = schlieren.get(subset)
 
-        return {}
+        obs_split = {
+            "velocity_u": obs_u_subset, 
+            "velocity_v": obs_v_subset,
+            "pressure_taps": obs_pt_subset,
+            "schlieren": obs_sch_subest,
+        }
+
+        return self._prepare_torch_observation_data(obs_split)
+
 
     def _prepare_torch_observation_data(
-        self,   
+        self, 
+        obs_split,  
     ):
+
+        
+
+
+
 
         return {}
         
