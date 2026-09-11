@@ -1,18 +1,25 @@
 # SPDX-License-Identifier: MIT
+"""Coordinate configured dataset preparation, model training, and plotting."""
+
 from src.config import create_output_directories, load_config
 from src.networks import build_network
-from src.observation import ObservationData, prepare_observation_data
-from src.pinn import build_pinn_model, evaluate_data, train_model
+from src.observation import ObservationData, prepare_observation_datasets
 from src.postprocessing import run_flowfield_postprocessing
+from src.pinn import (
+    build_pinn_model, 
+    evaluate_test_dataset, 
+    train_model,
+)
 from src.sampling import (
     get_collocation_points,
     get_data_points,
-    prepare_data,
+    prepare_cfd_datasets,
+    prepare_collocation_dataset,
 )
 from src.utils import (
     plot_observation_data,
-    plot_prepared_observation_data,
-    plot_prepared_sampling_data,
+    plot_prepared_observation_datasets,
+    plot_prepared_sampling_datasets,
     plot_sampling_data,
     plot_schlieren_image,
 )
@@ -20,6 +27,12 @@ from src.utils import (
 
 def run() -> None:
     """Execute the configured PIRFlow reconstruction workflow.
+
+    Load the configuration, prepare CFD and collocation datasets, and plot
+    the sampled points and dataset splits. For inverse problems, load,
+    prepare, and plot observations, then return before model training.
+    For forward problems, build and train the model, evaluate the test
+    dataset, and run flow-field postprocessing when enabled.
 
     Returns
     -------
@@ -43,6 +56,19 @@ def run() -> None:
     # Plot original sampling points
     plot_sampling_data(data_pnts, collocation_pnts, params)
 
+    # Prepare training, validation, test and collocation datasets
+    cfd_datasets = prepare_cfd_datasets(data_pnts, params)
+
+    # Collocation points must be used the inverse problem as well
+    collocation_dataset = prepare_collocation_dataset(
+        collocation_pnts, params) 
+
+    # Plot prepared datasets from sampling
+    plot_prepared_sampling_datasets(cfd_datasets, collocation_dataset, params)
+
+    # Build neural network
+    network = build_network(params)
+
     # Problem definition
     problem = params["run"].get("problem", "forward").lower()
 
@@ -55,7 +81,7 @@ def run() -> None:
         observations = observation_loader.load_observation_data()
 
         # Split observation dataset
-        prepared_observations = prepare_observation_data(
+        observation_datasets = prepare_observation_datasets(
             observations,
             params,
         )
@@ -68,38 +94,30 @@ def run() -> None:
             plot_schlieren_image(observations["schlieren"], params)
 
         # Plot observation datasets: training, validation, test
-        plot_prepared_observation_data(prepared_observations, params)
+        plot_prepared_observation_datasets(observation_datasets, params)
 
-    if problem == "forward":
-        # Prepare training, validation, test and collocation datasets
-        datasets = prepare_data(
-            data_pnts["X"],
-            data_pnts["U"],
-            data_pnts["rho"],
-            data_pnts["p"],
-            data_pnts["mut"],
-            # Collocation points must be used the inverse problem as well
-            collocation_pnts["Xf"],
-            params,
-        )
+        return
 
-        # Plot prepared datasets from sampling
-        plot_prepared_sampling_data(datasets, params)
+    else:
+        observation_datasets = None
 
-        # Build neural network
-        network = build_network(params)
+    # Build model
+    # The model is built with the datasets, but for the inverse problem,
+    # we need to pass the observation data instead of datasets.
+    model = build_pinn_model(
+        network, 
+        params,
+        cfd_datasets,
+        observation_datasets, 
+        collocation_dataset, 
+    )
 
-        # Build model
-        # The model is built with the datasets, but for the inverse problem,
-        # we need to pass the observation data instead of datasets.
-        model = build_pinn_model(network, datasets, params)
+    # Train model
+    train_model(model, params)
 
-        # Train model
-        train_model(model, params)
+    # Evaluate test dataset
+    evaluate_test_dataset(model, cfd_datasets["test"])
 
-        # Evaluate test dataset
-        evaluate_data(model, datasets)
-
-        # Postprocess flowfield
-        if params["run"]["routines"].get("postprocessing", False):
-            run_flowfield_postprocessing(model, params)
+    # Postprocess flowfield
+    if params["run"]["routines"].get("postprocessing", False):
+        run_flowfield_postprocessing(model, params)

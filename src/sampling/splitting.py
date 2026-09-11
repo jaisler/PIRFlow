@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: MIT
+"""Prepare CFD dataset splits and collocation coordinates using saved indices."""
+
 import numpy as np
 from pathlib import Path
 
@@ -205,35 +207,42 @@ def get_collocation_indeces(N_coll, params):
 
     return idxc
 
-def prepare_data(X, U, rho, p, mut, Xf, params):
-    """Prepare field arrays for training, validation, test, and physics.
+def prepare_cfd_datasets(data_pnts, params):
+    """Split sampled CFD fields into training, validation, and test datasets.
 
     Parameters
     ----------
-    X : np.ndarray
-        Coordinates of the data points.
-    U : np.ndarray
-        Velocity field.
-    rho : np.ndarray
-        Density field.
-    p : np.ndarray
-        Pressure field.
-    mut : np.ndarray
-        Eddy viscosity field.
-    Xf : np.ndarray or None
-        Collocation points.
+    data_pnts : dict
+        Sampled CFD data containing coordinate and velocity arrays under
+        ``"X"`` and ``"U"`` with shape ``(N, dimension)``, plus density,
+        pressure, and turbulent viscosity under ``"rho"``, ``"p"``, and
+        ``"mut"`` with shape ``(N,)``. Only the first two coordinate and
+        velocity components are used.
     params : dict
-        Configuration dictionary.
+        PIRFlow configuration defining split percentages, the random seed,
+        and the location and reuse of saved split indices.
 
     Returns
     -------
     dict
-        Prepared data and collocation arrays.
+        Mappings under ``"all"``, ``"training"``, ``"validation"``, and
+        ``"test"``. The full dataset contains one-dimensional arrays keyed
+        by ``"x"``, ``"y"``, ``"rho"``, ``"u"``, ``"v"``, ``"p"``, and
+        ``"mut"``. Split arrays have shape ``(N_split, 1)`` and append
+        ``"train"``, ``"val"``, or ``"test"`` to those keys. Validation
+        and test entries are ``None`` when their split contains no points.
+        All arrays retain their physical units.
     """
     
     # Note that, the number of points inside the geometry is not the same
     # number of the points provided in the configuration file.
-    
+
+    X = data_pnts["X"],
+    U = data_pnts["U"],
+    rho = data_pnts["rho"],
+    p = data_pnts["p"],
+    mut = data_pnts["mut"],
+
     # Data points
     N = X.shape[0]
 
@@ -295,25 +304,6 @@ def prepare_data(X, U, rho, p, mut, Xf, params):
         ptest = p[idx_test, None]
         muttest = mut[idx_test, None]
 
-    # Collocation points initialisation
-    xf = None
-    yf = None
-    xftrain = None
-    yftrain = None
-
-    # Collocation points
-    if Xf is not None:  
-        # Collocation points
-        N_coll = Xf.shape[0]
-        xf = Xf[:,0]   # N 
-        yf = Xf[:,1]   # N
-
-        # Get collocation split indeces 
-        idxc = get_collocation_indeces(N_coll, params)
-
-        xftrain = xf[idxc, None]
-        yftrain = yf[idxc, None]
-
     # All data points
     all = {
         "x": x,
@@ -357,6 +347,63 @@ def prepare_data(X, U, rho, p, mut, Xf, params):
         "muttest": muttest,
     }
 
+    # Print dataset information
+    print("---------------------------------------")
+    print("CFD dataset information")
+    print(f"  Training data points           : {N_train_data}")
+    print(f"  Validation data points         : {N_val_data}")
+    print(f"  Test data points               : {N_test_data}")
+    
+    return {
+        "all": all,
+        "training": training_data,
+        "validation": validation_data,
+        "test": test_data,
+    }
+
+def prepare_collocation_dataset(collocation_pnts, params):
+    """Prepare collocation coordinates for physics-informed learning.
+
+    Parameters
+    ----------
+    collocation_pnts : dict
+        Sampled collocation points under ``"Xf"``, with shape
+        ``(N, dimension)``, or ``None`` when collocation is disabled.
+        Only the first two coordinate components are used.
+    params : dict
+        PIRFlow configuration defining the random seed and the location
+        and reuse of saved collocation indices.
+
+    Returns
+    -------
+    dict
+        Physical coordinate arrays ``"xf"`` and ``"yf"`` with shape
+        ``(N,)``, and indexed training columns ``"xftrain"`` and
+        ``"yftrain"`` with shape ``(N, 1)``. All entries are ``None`` when
+        ``collocation_pnts["Xf"]`` is ``None``.
+    """
+    
+    Xf = collocation_pnts["Xf"],
+
+    # Collocation points initialisation
+    xf = None
+    yf = None
+    xftrain = None
+    yftrain = None
+
+    # Collocation points
+    if Xf is not None:  
+        # Collocation points
+        N_coll = Xf.shape[0]
+        xf = Xf[:,0]   # N 
+        yf = Xf[:,1]   # N
+
+        # Get collocation split indeces 
+        idxc = get_collocation_indeces(N_coll, params)
+
+        xftrain = xf[idxc, None]
+        yftrain = yf[idxc, None]
+
     collocation_data = {
         "xf": xf,
         "yf": yf,
@@ -366,17 +413,8 @@ def prepare_data(X, U, rho, p, mut, Xf, params):
 
     # Print dataset information
     print("---------------------------------------")
-    print("Dataset information")
-    print(f"  Training data points           : {N_train_data}")
-    print(f"  Validation data points         : {N_val_data}")
-    print(f"  Test data points               : {N_test_data}")
+    print("Collocation dataset information")
     if xftrain is not None:
         print(f"  Training collocation points    : {N_coll}")
-    
-    return {
-        "all": all,
-        "training": training_data,
-        "validation": validation_data,
-        "test": test_data,
-        "collocation": collocation_data,
-    }
+
+    return collocation_data
