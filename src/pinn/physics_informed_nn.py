@@ -243,7 +243,7 @@ class PhysicsInformedNN(nn.Module):
         # Observation datasets
         self.obs_train = {}
         self.obs_validation = {}
-        if (self.problem == "inverse" ):
+        if (self.problem == "inverse"):
 
             # Observation training data
             self.obs_train = self._prepare_observation_split(
@@ -256,6 +256,15 @@ class PhysicsInformedNN(nn.Module):
                 observation_datasets,
                 subset="validation",
             )
+
+            if not self.obs_train:
+                raise ValueError(
+                    "An inverse problem requires at least one nonempty "
+                    "training observation modality"
+                )
+
+        # Check if there is a validation dataset
+        self.has_observation_validation = bool(self.obs_validation)
 
         # Collocation dataset
         (
@@ -969,38 +978,103 @@ class PhysicsInformedNN(nn.Module):
             velocity_profiles = {}
 
         velocity_u = velocity_profiles.get("u")
-        obs_u_subset = velocity_u(subset)
+        obs_u_subset = velocity_u[subset]
 
         velocity_v = velocity_profiles.get("v")        
-        obs_v_subset = velocity_v(subset)
+        obs_v_subset = velocity_v[subset]
 
         pressure_taps = observation_datasets.get("pressure_taps")
-        obs_pt_subset = pressure_taps.get(subset)
+        obs_pt_subset = pressure_taps[subset]
 
         schlieren = observation_datasets.get("schlieren")
-        obs_sch_subest = schlieren.get(subset)
+        obs_sch_subset = schlieren[subset]
 
+        # Select the requested split for each available modality.
         obs_split = {
-            "velocity_u": obs_u_subset, 
-            "velocity_v": obs_v_subset,
-            "pressure_taps": obs_pt_subset,
-            "schlieren": obs_sch_subest,
+            "velocity_u": (
+                None if velocity_u is None else obs_u_subset
+            ),
+            "velocity_v": (
+                None if velocity_v is None else obs_v_subset
+            ),
+            "pressure_taps": (
+                None if pressure_taps is None else obs_pt_subset
+            ),
+            "schlieren": (
+                None if schlieren is None else obs_sch_subset
+            ),
         }
 
-        return self._prepare_torch_observation_data(obs_split)
+        # Reference scales for the measured values.
+        value_scales = {
+            "velocity_u": self.Uref,
+            "velocity_v": self.Uref,
+            "pressure_taps": self.pref,
+            "schlieren": 1.0,
+        }
 
+        # Convert each available modality into tensors.
+        prepared = {}
+
+        for name, split in obs_split.items():
+            if split is None:
+                continue
+
+            tensors = self._prepare_torch_observation_data(
+                split,
+                value_scale=value_scales[name],
+                name=f"{name}/{subset}",
+            )
+
+            if tensors is not None:
+                prepared[name] = tensors
+
+        return prepared
 
     def _prepare_torch_observation_data(
         self, 
-        obs_split,  
+        split,  
+        value_scale,
+        name,
     ):
 
-        
+        for scale in (self.Lref, value_scale):
+            if not np.isfinite(scale) or scale <= 0:
+                raise ValueError(
+                    f"{name}: reference scales must be finite and positive"
+                )
 
+        # Get non-dimensional data
+        X = split["X"] / self.Lref
+        value = split["value"] / value_scale
 
+        # Torch tensor
+        X = torch.tensor(
+            X,
+            dtype=torch.float32,
+            device=self.device,
+        )
 
+        # Torch tensor
+        value = torch.tensor(
+            value,
+            dtype=torch.float32,
+            device=self.device,
+        )
 
-        return {}
+        if value.shape != (X.shape[0], 1):
+            raise ValueError(
+                f"{name}: expected values with shape ({X.shape[0]}, 1), "
+                f"received {tuple(value.shape)}"
+            )
+
+        if X.shape[0] == 0:
+            return None
+
+        return {
+            "X": X,
+            "value": value
+        }
         
     def get_dimensional_data(self, rho, u, v, p, mut=None):
         """Restore dimensional units to nondimensional flow fields.
