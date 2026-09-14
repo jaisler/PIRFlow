@@ -5,8 +5,7 @@ from .physics_informed_nn import PhysicsInformedNN
 
 def build_pinn_model(
         network, 
-        params,
-        *, 
+        params, 
         cfd_datasets=None, 
         observation_datasets=None, 
         collocation_dataset=None
