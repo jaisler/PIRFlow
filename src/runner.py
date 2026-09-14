@@ -56,15 +56,9 @@ def run() -> None:
     # Plot original sampling points
     plot_sampling_data(data_pnts, collocation_pnts, params)
 
-    # Prepare training, validation, test and collocation datasets
-    cfd_datasets = prepare_cfd_datasets(data_pnts, params)
-
     # Collocation points must be used the inverse problem as well
     collocation_dataset = prepare_collocation_dataset(
         collocation_pnts, params) 
-
-    # Plot prepared datasets from sampling
-    plot_prepared_sampling_datasets(cfd_datasets, collocation_dataset, params)
 
     # Build neural network
     network = build_network(params)
@@ -74,6 +68,9 @@ def run() -> None:
 
     # Load observation data
     if problem == "inverse":
+        # No CFD will be used
+        cfd_datasets = None
+
         # Load and organize observation data for the inverse problem
         observation_loader = ObservationData(params)
 
@@ -96,10 +93,15 @@ def run() -> None:
         # Plot observation datasets: training, validation, test
         plot_prepared_observation_datasets(observation_datasets, params)
 
-        return
-
     else:
+        # CFD data was already provided
         observation_datasets = None
+
+        # Prepare training, validation, test and collocation datasets
+        cfd_datasets = prepare_cfd_datasets(data_pnts, params)
+
+        # Plot prepared datasets from sampling
+        plot_prepared_sampling_datasets(cfd_datasets, collocation_dataset, params)
 
     # Build model
     # The model is built with the datasets, but for the inverse problem,
@@ -115,9 +117,10 @@ def run() -> None:
     # Train model
     train_model(model, params)
 
-    # Evaluate test dataset
-    evaluate_test_dataset(model, cfd_datasets["test"])
+    if problem == "forward":
+        # Evaluate test dataset
+        evaluate_test_dataset(model, cfd_datasets["test"])
 
-    # Postprocess flowfield
-    if params["run"]["routines"].get("postprocessing", False):
-        run_flowfield_postprocessing(model, params)
+        # Postprocess flowfield
+        if params["run"]["routines"].get("postprocessing", False):
+            run_flowfield_postprocessing(model, params)
