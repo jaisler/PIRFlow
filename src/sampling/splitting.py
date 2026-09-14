@@ -237,11 +237,14 @@ def prepare_cfd_datasets(data_pnts, params):
     # Note that, the number of points inside the geometry is not the same
     # number of the points provided in the configuration file.
 
-    X = data_pnts["X"],
-    U = data_pnts["U"],
-    rho = data_pnts["rho"],
-    p = data_pnts["p"],
-    mut = data_pnts["mut"],
+    X = data_pnts["X"]
+    U = data_pnts["U"]
+    rho = data_pnts["rho"]
+    p = data_pnts["p"]
+    mut = data_pnts["mut"]
+
+    if X is None:
+        return {}
 
     # Data points
     N = X.shape[0]
@@ -383,7 +386,7 @@ def prepare_collocation_dataset(collocation_pnts, params):
         ``collocation_pnts["Xf"]`` is ``None``.
     """
     
-    Xf = collocation_pnts["Xf"],
+    Xf = collocation_pnts["Xf"]
 
     # Collocation points initialisation
     xf = None
