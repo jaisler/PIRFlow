@@ -24,7 +24,6 @@ class PhysicsInformedNN(nn.Module):
         self,
         network,
         params,
-        *,
         cfd_datasets=None,
         observation_datasets=None,
         collocation_dataset=None,
@@ -274,9 +273,28 @@ class PhysicsInformedNN(nn.Module):
         ) = self._prepare_torch_collocation_data(collocation_dataset) 
 
         # Coordinates used by the PINN/GNN
-        # Data coordinates
-        self.X_data = torch.cat([self.xtrain, self.ytrain], dim=1)
-        self.n_data = self.X_data.shape[0]
+        if self.problem == "forward":
+            # Data coordinates
+            self.X_data = torch.cat([self.xtrain, self.ytrain], dim=1)
+            self.n_data = self.X_data.shape[0]
+
+        # Coordinates used by the PINN/GNN
+        elif self.problem == "inverse":
+            # Observation coordinates
+            self.X_obs = torch.cat([
+                self.obs_train["velocity_u"]["X"],
+                self.obs_train["velocity_v"]["X"],
+                self.obs_train["pressure_taps"]["X"],
+                self.obs_train["schlieren"]["X"],
+                ], dim=0)
+            
+            self.X_data = self.X_obs
+            self.n_data = self.X_obs.shape[0]
+
+        else:
+            raise ValueError(
+                f"Unknown run.problem: {self.problem}."
+            )
 
         # Collocation coordinates
         if (self.model == "pinn" 
@@ -289,7 +307,7 @@ class PhysicsInformedNN(nn.Module):
             self.X_res = None
             self.n_res = 0
 
-        # All training coordinates: data + collocation
+        # All training coordinates: data (cfd or observation) + collocation
         if self.X_res is not None:
             self.X_all = torch.cat([self.X_data, self.X_res], dim=0)
         else:
@@ -934,7 +952,7 @@ class PhysicsInformedNN(nn.Module):
             # Non-dimensional coordiantes (collocation points for PINNs)
             xfstar, yfstar = self.get_nondimensional_coord(xf, yf)
             # Data coordiantes
-            Xf = np.concatenate([xfstar, yfstar], 1)
+            Xf = np.column_stack([xfstar, yfstar])
             # Spatial coordinates
             Xf = torch.tensor(Xf, dtype=torch.float32, device=self.device)
             xf = Xf[:,0:1]
