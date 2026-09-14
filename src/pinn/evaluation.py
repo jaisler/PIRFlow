@@ -33,7 +33,7 @@ def evaluate_test_dataset(model, data):
 
     test_metrics = model.evaluate_data(
         data["xtest"], data["ytest"], data["rhotest"], 
-        data["utest"], data["vtest"], data["test"]["ptest"], 
+        data["utest"], data["vtest"], data["ptest"], 
         data["muttest"]
     )
 
