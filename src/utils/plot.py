@@ -2,6 +2,8 @@
 """Plot observations, prepared datasets, training histories, and flow fields."""
 
 import os
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pyvista as pv
