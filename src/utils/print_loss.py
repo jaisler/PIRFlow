@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: MIT
-from ..pinn.losses import loss_fn
 
 def print_loss(pinn, it):
     """Print the current training-loss components.
@@ -16,6 +15,9 @@ def print_loss(pinn, it):
     None
         Losses are written to standard output.
     """
+    # Defer the PINN import until the utility package is fully initialized.
+    from ..pinn.losses import loss_fn
+
     if pinn.model == 'pinn':
 
         if pinn.eq == 'euler':
