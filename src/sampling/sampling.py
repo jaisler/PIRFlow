@@ -76,16 +76,16 @@ class SamplingData:
         self.pts_grad = np.empty((0, 3), dtype=float)
         self.pts = np.empty((0, 3), dtype=float)
 
-        if self.collpts:
-            point_cfg = self.params['sampling']['collocation_points']
-        else:
-            point_cfg = self.params['sampling']['data_points']
+        npinner, npgrad, boundaries = self._get_sampling_plan()
 
-        #npinner, npgrad, boundaries = self._get_sampling_plan()
-
-        npinner = point_cfg['interior']
-        npgrad = point_cfg['gradient']
-        npbc = point_cfg['boundary']
+        # No boundary data are requested for this inverse problem.
+        if self.boundary_only and not boundaries:
+            self.X = self.pts.copy()
+            self.U = np.empty((0, 3), dtype=float)
+            self.rho = np.empty((0,), dtype=float)
+            self.p = np.empty((0,), dtype=float)
+            self.mut = np.empty((0, 1), dtype=float)
+            return
 
         # Load your solution
         # .vtk, .pvtu, .vtm, ...
@@ -100,47 +100,68 @@ class SamplingData:
         # Get base sampler function 
         base_sampler = self.get_base_sampler(self.params['sampling']['method'])
 
+        # Inner points
         if npinner > 0:
-            # Call chosen sampler 
-            pts_in = base_sampler(npinner, xmin, xmax, ymin, ymax)  
-            # The flow is 2D but VTK expects 3D points, lift to z=zmin (or 0)
+            pts_in = base_sampler(npinner, xmin, xmax, ymin, ymax)
+
             if self.dims == 2:
-                pts_in = np.column_stack([pts_in, np.full((pts_in.shape[0],), zmin)])
-        else:
-            raise ValueError("Number of sample points must be provided ")
-        self.pts_in = np.vstack([self.pts_in, pts_in])
+                pts_in = np.column_stack(
+                    [pts_in,np.full(pts_in.shape[0], zmin)]
+                )
 
-        # Interpolate solution at all points 
-        point_cloud = pv.PolyData(self.pts_in) 
-        # Interpolates point/cell data onto pts
-        sampled = point_cloud.sample(mesh)
-        # Apply mask at the inner points
-        mask = sampled["vtkValidPointMask"].astype(bool)
+            self.pts_in = np.vstack([self.pts_in, pts_in])
 
-        self.pts_in = self.pts_in[mask]
-        self.pts = np.vstack([self.pts, pts_in])
-        
+            # Retain valid interior points for the sampling group.
+            # Interpolate solution at all points
+            sampled = pv.PolyData(self.pts_in).sample(mesh)
+            # Interpolates point/cell data onto pts
+            mask = sampled["vtkValidPointMask"].astype(bool)
+            # Apply the mask in all points
+            self.pts_in = self.pts_in[mask]
+
+            # The final interpolation below applies its validity mask again.
+            self.pts = np.vstack([self.pts, pts_in])
+
+        elif not self.boundary_only:
+            raise ValueError("Number of sample points must be provided.")        
+
+        # Gradient points
         # Add extra points in regions detected by a sensor
         # Extra points based on gradient |grad(rho)|
         if npgrad > 0:
             grad_cfg = self.params["sampling"]["gradient_sampling"]
+
             pts_grad = self.sample_based_on_grad(
-                mesh=mesh, npoin_grad=npgrad,
-                xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax, zmin=zmin, zmax=zmax,
-                base_sampler=base_sampler,
+                mesh, 
+                npgrad,
+                xmin, xmax, ymin, ymax, zmin, zmax,
+                base_sampler,
                 var_name=grad_cfg.get("variable", "Density"),
                 pool_factor=grad_cfg.get("pool_factor", 8),
-                alpha=grad_cfg.get("alpha", 1.5))
+                alpha=grad_cfg.get("alpha", 1.5)
+            )
+
             self.pts_grad = np.vstack([self.pts_grad, pts_grad])
+            # The final interpolation below applies its validity mask again.
             self.pts = np.vstack([self.pts, pts_grad])
 
-        # Points on the boundary condition
-        bc_names = self.params['sampling']['boundaries']['names']
-        bc_poin = npbc #params['sampling']['nspoin_bc']
-        for phys_name, n_bc in zip(bc_names, bc_poin):
+        # Boundary condition points
+        for phys_name, n_bc in boundaries:
             if n_bc > 0:
-                pts_bc = self.sample_boundary_condition(phys_name, n_bc)                
-                pts_bc = self.nudge_bc_points(pts_bc, phys_name, xmin, xmax, ymin, ymax)
+                pts_bc = self.sample_boundary_condition(
+                    phys_name,
+                    n_bc,
+                )
+
+                pts_bc = self.nudge_bc_points(
+                    pts_bc,
+                    phys_name,
+                    xmin,
+                    xmax,
+                    ymin,
+                    ymax,
+                )
+
                 self.pts_bc = np.vstack([self.pts_bc, pts_bc])
                 self.pts = np.vstack([self.pts, pts_bc])
 
@@ -150,6 +171,13 @@ class SamplingData:
         sampled = point_cloud.sample(mesh)  
         # Apply the mask in all points
         mask = sampled["vtkValidPointMask"].astype(bool)
+
+        if self.boundary_only and not np.all(mask):
+            raise ValueError(
+                f"{np.count_nonzero(~mask)} selected boundary points "
+                "could not be interpolated on the CFD mesh. "
+                "Check the geometry, flow mesh, and boundary nudging."
+            )
 
         # sampled.point_data now contains interpolated arrays at your points
         #print(sampled.point_data.keys())
