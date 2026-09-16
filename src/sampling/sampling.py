@@ -25,7 +25,11 @@ class SamplingData:
         self.collpts = collpts
         self.params = params
         self.dims = params['geometry']['dimension']
-
+        # For a collocation object, it is always False
+        self.boundary_only = (
+            not self.collpts
+            and params["run"].get("problem", "forward").lower() == "inverse"
+)
         self.pts_in = np.empty((0, 3), dtype=float)
         self.pts_bc = np.empty((0, 3), dtype=float)
         self.pts_grad = np.empty((0, 3), dtype=float)
@@ -44,12 +48,18 @@ class SamplingData:
             if self.collpts:
                 print("Sampling collocation points ...")
             else:
-                print("Sampling data points...")
+                if self.boundary_only:
+                    print("Sampling boundary condition points...") 
+                else:
+                    print("Sampling data points...")
         else:
             if self.collpts:
                 print("Loading collocation points ...")
             else:
-                print("Loading data points ...")
+                if self.boundary_only:
+                    print("Loading boudanry condition points ...")
+                else:
+                    print("Loading data points ...")
 
     def sample(self):
         """Sample points and interpolate the configured CFD flowfield.
@@ -70,6 +80,8 @@ class SamplingData:
             point_cfg = self.params['sampling']['collocation_points']
         else:
             point_cfg = self.params['sampling']['data_points']
+
+        #npinner, npgrad, boundaries = self._get_sampling_plan()
 
         npinner = point_cfg['interior']
         npgrad = point_cfg['gradient']
@@ -97,11 +109,15 @@ class SamplingData:
         else:
             raise ValueError("Number of sample points must be provided ")
         self.pts_in = np.vstack([self.pts_in, pts_in])
+
+        # Interpolate solution at all points 
+        point_cloud = pv.PolyData(self.pts_in) 
+        # Interpolates point/cell data onto pts
+        sampled = point_cloud.sample(mesh)
         # Apply mask at the inner points
-        sampled = pv.PolyData(self.pts_in).sample(mesh)
         mask = sampled["vtkValidPointMask"].astype(bool)
+
         self.pts_in = self.pts_in[mask]
-        # All points
         self.pts = np.vstack([self.pts, pts_in])
         
         # Add extra points in regions detected by a sensor
@@ -163,6 +179,88 @@ class SamplingData:
             elif (self.params['run']['equation'] == 'euler'):
                 # Otherwise return zero
                 self.mut = np.zeros((self.X.shape[0], 1), dtype=float)
+
+    def _get_sampling_plan(self):
+        """Return interior counts, gradient counts, and boundary/count pairs."""
+
+        sampling_config = self.params["sampling"]
+
+        if self.collpts:
+            point_config = sampling_config["collocation_points"]
+        else:
+            point_config = sampling_config["data_points"]
+
+        boundary_names = sampling_config["boundaries"]["names"]
+        boundary_counts = point_config["boundary"]
+
+        if len(boundary_names) != len(boundary_counts):
+            raise ValueError(
+                "sampling.boundaries.names and sampling.data_points.boundary "
+                "must have the same length."
+            )
+
+        if len(set(boundary_names)) != len(boundary_names):
+            raise ValueError("Configured boundary names must be unique.")
+
+        # Preserve the existing plan for forward data and collocation points.
+        if not self.boundary_only:
+            return (
+                point_config["interior"],
+                point_config["gradient"],
+                list(zip(boundary_names, boundary_counts)),
+            )
+
+        # Inverse data contain only enabled, selected boundaries.
+        boundary_config = self.params.get(
+            "identification", {}).get(
+            "boundary_conditions", {}
+        )
+
+        if not boundary_config.get("enabled", False):
+            return 0, 0, []
+
+        selected_names = boundary_config.get("names", [])
+
+        if not isinstance(selected_names, list) or not selected_names:
+            raise ValueError(
+                "identification.boundary_conditions.names must be "
+                "a non-empty list when boundary conditions are enabled."
+            )
+
+        if not all(isinstance(name, str) for name in selected_names):
+            raise ValueError("Selected boundary names for identification " \
+                             "must be strings.")
+
+        if len(set(selected_names)) != len(selected_names):
+            raise ValueError("Selected boundary names for identification " \
+                             "must not be repeated.")
+
+        counts_by_name = dict(zip(boundary_names, boundary_counts))
+
+        selected_boundaries = []
+
+        for name in selected_names:
+            if name not in counts_by_name:
+                raise ValueError(
+                    f"Boundary '{name}' is not listed in "
+                    "sampling.boundary.names."
+                )
+
+            count = counts_by_name[name]
+
+            if (isinstance(count, bool)
+                or not isinstance(count, int)
+                or count <= 0
+            ):
+                raise ValueError(
+                    f"Selected boundary '{name}' requires a positive "
+                    "integer point count."
+                )
+
+            selected_boundaries.append((name, int(count)))
+
+        return 0, 0, selected_boundaries
+
 
     def get_base_sampler(self, sampling_type: str):
         """Return the point-sampling function selected by name.
