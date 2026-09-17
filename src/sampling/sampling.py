@@ -603,9 +603,9 @@ class SamplingData:
         path_data = Path(self.params['paths']['samples'])
         path_data.mkdir(parents=True, exist_ok=True)
 
-        if self.collpts:
-            filename = path_data / "collocation_points.npz"
+        filename = self._get_sample_path()
 
+        if self.collpts:
             np.savez_compressed(
                 filename,
                 X=self.X,
@@ -616,7 +616,21 @@ class SamplingData:
             )
 
         else:
-            filename = path_data / "data_points.npz"
+            boundary_info = {}
+
+            if self.boundary_only:
+                _, _, boundaries = self._get_sampling_plan()
+
+                boundary_info = {
+                    "boundary_names": np.asarray(
+                        [name for name, _ in boundaries],
+                        dtype=str,
+                    ),
+                    "boundary_counts": np.asarray(
+                        [count for _, count in boundaries],
+                        dtype=int,
+                    ),
+                }
 
             np.savez_compressed(
                 filename,
@@ -629,6 +643,7 @@ class SamplingData:
                 pts_bc=self.pts_bc,
                 pts_grad=self.pts_grad,
                 collpts=np.array(False),
+                **boundary_info, # dictionary unpacking: ** 
             )
 
         print("---------------------------------------")
@@ -643,31 +658,32 @@ class SamplingData:
             Coordinates, point groups, and optional flow variables.
         """
 
-        path_data = Path(self.params['paths']['samples'])
+        filename = self._get_sample_path()
 
-        # Note that, the attribute self.collpts has the information if it is
-        # data or collocation points
-        if not self.collpts:
-            filename = path_data / "data_points.npz"
-
-            if not filename.is_file():
-                raise FileNotFoundError(
-                    f"Sample data file was not found:\n  {filename}\n\n"
-                    "Sampling is currently disabled. Enable the sampling routine in "
-                    "'configuration.yaml' and run the program once to generate the file."
-                )
-
-        else:
-            filename = path_data / "collocation_points.npz"
-
-            if not filename.is_file():
-                raise FileNotFoundError(
-                    f"Sample collocation data file was not found:\n  {filename}\n\n"
-                    "Sampling is currently disabled. Enable the sampling routine in "
-                    "'configuration.yaml' and run the program once to generate the file."
-                )
+        if not filename.is_file():
+            raise FileNotFoundError(
+                f"Sample file was not found:\n  {filename}\n"
+                "Enable run.routines.sampling to generate it."
+            )
 
         data = np.load(filename)
+
+        if self.boundary_only:
+            _, _, boundaries = self._get_sampling_plan()
+
+            expected_names = [name for name, _ in boundaries]
+            expected_counts = [count for _, count in boundaries]
+
+            if (
+                "boundary_names" not in data
+                or "boundary_counts" not in data
+                or data["boundary_names"].tolist() != expected_names
+                or data["boundary_counts"].tolist() != expected_counts
+            ):
+                raise ValueError(
+                    "Saved boundary names/counts differ from the configuration. "
+                    "Enable run.routines.sampling to regenerate the samples."
+                )
 
         X = data["X"]
         pts_in = data["pts_in"]
@@ -686,6 +702,18 @@ class SamplingData:
             mut = None
 
         return X, pts_in, pts_bc, pts_grad, U, rho, p, mut
+
+    def _get_sample_path(self):
+        """Return the sample-file path for this sampling object."""
+
+        if self.collpts:
+            filename = "collocation_points.npz"
+        elif self.boundary_only:
+            filename = "boundary_points.npz"
+        else:
+            filename = "data_points.npz"
+
+        return Path(self.params["paths"]["samples"]) / filename
 
     def get_boundary_marker(self):
         """Return the boundary-marker array, when available.
