@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: MIT
+"""Compute supervised, physical-residual, and validation loss terms."""
+
 import torch
 
 from .residuals import steady_euler_residuals
@@ -15,7 +17,7 @@ def zero_loss(pinn):
     Returns
     -------
     torch.Tensor
-        Scalar zero tensor on `pinn.device`.
+        Scalar zero tensor on ``pinn.device``.
     """
 
     return torch.tensor(0.0, dtype=torch.float32, device=pinn.device)
@@ -36,13 +38,14 @@ def data_loss_terms(pinn, x, y, rho_true, u_true, v_true, p_true,
         Reference scaled turbulent viscosity. Required only for RANS.
     use_dropout : bool, optional
         Whether to enable data dropout.
-    role : {"data", "validation", "query"} or None
+    role : {"data", "validation", "query"} or None, optional
         GNN graph role; ignored by the MLP.
 
     Returns
     -------
     tuple of torch.Tensor
-        Density, velocity, pressure, and viscosity loss terms.
+        Scalar losses in the order ``(l_rho, l_u, l_v, l_p, l_mut)``.
+        The viscosity loss is zero for Euler.
     """
 
     if pinn.eq == 'euler': 
@@ -82,8 +85,8 @@ def residual_loss_terms(pinn):
     Returns
     -------
     tuple of torch.Tensor
-        Mass, momentum, and energy residual losses. All values are zero for a
-        supervised model.
+        Scalar losses for mass, x-momentum, y-momentum, and energy, in that
+        order. All four values are zero for a supervised model.
     """
 
     if pinn.model == 'supervised':
@@ -147,15 +150,19 @@ def loss_fn(pinn, return_terms=False):
     Parameters
     ----------
     pinn : PhysicsInformedNN
-        Model containing predictions, data, and loss weights.
+        Model containing CFD training tensors under ``xtrain``, ``ytrain``,
+        ``rhotrain``, ``utrain``, ``vtrain``, ``ptrain``, and ``muttrain``,
+        along with collocation coordinates and loss weights.
     return_terms : bool, optional
         Whether to return every unweighted component.
 
     Returns
     -------
     tuple of torch.Tensor
-        Total, data, and residual losses, or the total followed by every
-        component when ``return_terms`` is true.
+        ``(loss, data_loss, res_loss)`` with weighted data and residual
+        totals. When ``return_terms`` is true, return
+        ``(loss, l_rho, l_u, l_v, l_p, l_mut, l_f1, l_f2, l_f3, l_f4)``
+        instead, with each component unweighted.
     """
     
     # Define dropout
@@ -163,9 +170,9 @@ def loss_fn(pinn, return_terms=False):
 
     # Data loss terms
     l_rho, l_u, l_v, l_p, l_mut = \
-        data_loss_terms(pinn, pinn.x, pinn.y, pinn.rho, pinn.u,
-                        pinn.v,pinn.p, pinn.mut, use_data_dropout,
-                        role="data")
+        data_loss_terms(pinn, pinn.xtrain, pinn.ytrain, pinn.rhotrain, 
+                        pinn.utrain, pinn.vtrain, pinn.ptrain, 
+                        pinn.muttrain, use_data_dropout, role="data")
 
     # Residuals loss terms
     l_f1, l_f2, l_f3, l_f4 = residual_loss_terms(pinn)

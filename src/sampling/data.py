@@ -24,7 +24,11 @@ def get_data_points(params):
             "Expected 'forward' or 'inverse'."
         )
 
-    if problem == "inverse":
+    boundary_config = params.get("identification", {}).get(
+        "boundary_conditions", {}
+    )
+
+    if problem == "inverse" and not boundary_config.get("enabled", False):
         
         data_points = {
             "X": None,
