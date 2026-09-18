@@ -28,12 +28,6 @@ from src.utils import (
 def run() -> None:
     """Execute the configured PIRFlow reconstruction workflow.
 
-    Load the configuration, prepare CFD and collocation datasets, and plot
-    the sampled points and dataset splits. For inverse problems, load,
-    prepare, and plot observations, then return before model training.
-    For forward problems, build and train the model, evaluate the test
-    dataset, and run flow-field postprocessing when enabled.
-
     Returns
     -------
     None
@@ -66,10 +60,27 @@ def run() -> None:
     # Problem definition
     problem = params["run"].get("problem", "forward").lower()
 
-    # Load observation data
+    # Boundary config for inverse problem
+    boundary_config = params.get("identification", {}).get(
+        "boundary_conditions", {}
+    )
+
+    # Boundary condition for the inverse problem
+    boundary_only = boundary_config.get("enabled", False)
+
+    # Load observation data 
     if problem == "inverse":
-        # No CFD will be used
-        cfd_datasets = None
+        if boundary_only:
+            if data_pnts is None:
+                raise RuntimeError(
+                    "Boundary conditions are enabled, but get_data_points "
+                    "returned None."
+                )
+            # Prepare boundary condition for inverse problem from CFD data
+            cfd_datasets = prepare_cfd_datasets(data_pnts, params)
+        else:
+            # No boundary condition for inverse problem
+            cfd_datasets = None
 
         # Load and organize observation data for the inverse problem
         observation_loader = ObservationData(params)

@@ -29,7 +29,8 @@ class SamplingData:
         self.boundary_only = (
             not self.collpts
             and params["run"].get("problem", "forward").lower() == "inverse"
-)
+        )
+
         self.pts_in = np.empty((0, 3), dtype=float)
         self.pts_bc = np.empty((0, 3), dtype=float)
         self.pts_grad = np.empty((0, 3), dtype=float)
