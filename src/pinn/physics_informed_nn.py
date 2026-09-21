@@ -121,6 +121,11 @@ class PhysicsInformedNN(nn.Module):
         self.w_u   = float(loss_weights['data'].get("u", 1.0))
         self.w_v   = float(loss_weights['data'].get("v", 1.0))
         self.w_p   = float(loss_weights['data'].get("p", 1.0))
+        # Observation
+        self.w_obs_sch = float(loss_weights['observations'].get("schlieren", 1.0))
+        self.w_obs_u   = float(loss_weights['observations'].get("u", 1.0))
+        self.w_obs_v   = float(loss_weights['observations'].get("v", 1.0))
+        self.w_obs_p   = float(loss_weights['observations'].get("p", 1.0))
         # Residual
         self.w_f1  = float(loss_weights['residual'].get("f1", 1.0))
         self.w_f2  = float(loss_weights['residual'].get("f2", 1.0))
@@ -181,9 +186,17 @@ class PhysicsInformedNN(nn.Module):
             cfd_training = cfd_datasets["training"]
             cfd_validation = cfd_datasets["validation"]
 
+        # Boundary conditions for inverse problem
+        boundary_inv = params["identification"]["boundary_coditions"]["enabled"]
+
+        self.use_inv_boundaries = (
+            self.problem == "inverse" 
+            and boundary_inv
+        )
+
         # CFD training data
         if (
-            self.problem == "forward"
+            (self.problem == "forward" or self.use_inv_boundaries)
             and cfd_training is not None
             and cfd_training["xtrain"] is not None
         ):
@@ -223,7 +236,10 @@ class PhysicsInformedNN(nn.Module):
             )
         )
 
-        if self.problem == "forward" and self.has_validation:
+        if (
+            (self.problem == "forward" or self.use_inv_boundaries)
+            and self.has_validation
+        ):
             (
                 _,
                 self.xval,
@@ -272,29 +288,38 @@ class PhysicsInformedNN(nn.Module):
             self.yf 
         ) = self._prepare_torch_collocation_data(collocation_dataset) 
 
-        # Coordinates used by the PINN/GNN
-        if self.problem == "forward":
+        # CFD or prescribed boundary coordinates
+        self.X_cfd = None
+        self.n_cfd = 0
+        if self.problem == "forward" or self.use_inv_boundaries:
             # Data coordinates
-            self.X_data = torch.cat([self.xtrain, self.ytrain], dim=1)
-            self.n_data = self.X_data.shape[0]
+            self.X_cfd = torch.cat([self.xtrain, self.ytrain], dim=1)
+            self.n_cfd = self.X_cfd.shape[0]
 
-        # Coordinates used by the PINN/GNN
-        elif self.problem == "inverse":
-            # Observation coordinates
-            self.X_obs = torch.cat([
-                self.obs_train["velocity_u"]["X"],
-                self.obs_train["velocity_v"]["X"],
-                self.obs_train["pressure_taps"]["X"],
-                self.obs_train["schlieren"]["X"],
-                ], dim=0)
-            
-            self.X_data = self.X_obs
-            self.n_data = self.X_obs.shape[0]
+        # Observation coordinates
+        self.X_obs = None
+        self.n_obs = 0
+        if self.problem == "inverse":
+            observation_coordinates = [
+                modality["X"] for modality in self.obs_train.values()
+            ]
 
-        else:
+            if observation_coordinates:
+                self.X_obs = torch.cat(observation_coordinates, dim=0)
+                self.n_obs = self.X_obs.shape[0]
+
+        coordinate_sets = [
+            X for X in (self.X_cfd, self.X_obs)
+            if X is not None
+        ]
+
+        if not coordinate_sets:
             raise ValueError(
-                f"Unknown run.problem: {self.problem}."
+                "No CFD, boundary, or observation training coordinates are available."
             )
+                
+        self.X_data = torch.cat(coordinate_sets, dim=0)
+        self.n_data = self.X_data.shape[0]
 
         # Collocation coordinates
         if (self.model == "pinn" 
@@ -307,7 +332,7 @@ class PhysicsInformedNN(nn.Module):
             self.X_res = None
             self.n_res = 0
 
-        # All training coordinates: data (cfd or observation) + collocation
+        # All training coordinates: data (cfd + observation) + collocation
         if self.X_res is not None:
             self.X_all = torch.cat([self.X_data, self.X_res], dim=0)
         else:
