@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: MIT
-"""Compute supervised, physical-residual, and validation loss terms."""
+""" Compute supervised, observation, physical-residual, 
+    and validation loss terms.
+"""
 
 import torch
 
@@ -22,8 +24,8 @@ def zero_loss(pinn):
 
     return torch.tensor(0.0, dtype=torch.float32, device=pinn.device)
 
-def data_loss_terms(pinn, x, y, rho_true, u_true, v_true, p_true,
-                    mut_true=None, use_dropout=False, role="data"):
+def cfd_loss_terms(pinn, x, y, rho_true, u_true, v_true, p_true,
+                   mut_true=None, use_dropout=False, role="data"):
     """Compute mean-squared errors for the supervised flow fields.
 
     Parameters
@@ -66,13 +68,46 @@ def data_loss_terms(pinn, x, y, rho_true, u_true, v_true, p_true,
     else:
         raise ValueError(f"Unknown equation type: {pinn.eq}")
 
-    # Data losses terms
+    # CFD losses terms
     l_rho = torch.mean((rho_true - rho_pred) ** 2)
     l_u   = torch.mean((u_true   - u_pred)   ** 2)
     l_v   = torch.mean((v_true   - v_pred)   ** 2)
     l_p   = torch.mean((p_true   - p_pred)   ** 2)
 
     return l_rho, l_u, l_v, l_p, l_mut
+
+def observations_loss_terms(pinn, observations, use_dropout=False, role="data"):
+    """Compute mean-squared errors for the supervised observed flow fields."""
+
+    if "pressure_taps" in observations:
+        pressure_taps = observations["pressure_taps"]
+
+        # Coordiantes
+        x_obs_p = pressure_taps["X"][:,0:1]
+        y_obs_p = pressure_taps["X"][:,1:2]
+
+        # Value
+        p_obs_true = pressure_taps["value"].reshape(-1,1)
+        _, _, _, p_obs_pred = \
+            pinn.net_fields(x_obs_p, y_obs_p, use_dropout, role=role)        
+
+        # pressure taps loss
+        l_obs_p   = torch.mean((p_obs_true - p_obs_pred)   ** 2)
+
+    else:
+        l_obs_p = zero_loss(pinn)
+
+
+
+    # CFD losses terms
+    #l_obs_sch = torch.mean((sch_true - sch_pred) ** 2)
+    #l_obs_u   = torch.mean((u_true   - u_pred)   ** 2)
+    #l_obs_v   = torch.mean((v_true   - v_pred)   ** 2)
+    #l_obs_p   = torch.mean((p_true   - p_pred)   ** 2)
+
+    aux = zero_loss(pinn)
+
+    return aux, aux, aux, l_obs_p
 
 def residual_loss_terms(pinn):
     """Compute mean-squared PDE residual terms.
@@ -159,7 +194,7 @@ def loss_fn(pinn, return_terms=False):
     Returns
     -------
     tuple of torch.Tensor
-        ``(loss, data_loss, res_loss)`` with weighted data and residual
+        ``(loss, cfd_loss, res_loss)`` with weighted cfd and residual
         totals. When ``return_terms`` is true, return
         ``(loss, l_rho, l_u, l_v, l_p, l_mut, l_f1, l_f2, l_f3, l_f4)``
         instead, with each component unweighted.
@@ -168,22 +203,34 @@ def loss_fn(pinn, return_terms=False):
     # Define dropout
     use_data_dropout = pinn.enable_data_dropout
 
-    # Data loss terms
+    # CFD loss terms
     l_rho, l_u, l_v, l_p, l_mut = \
-        data_loss_terms(pinn, pinn.xtrain, pinn.ytrain, pinn.rhotrain, 
-                        pinn.utrain, pinn.vtrain, pinn.ptrain, 
-                        pinn.muttrain, use_data_dropout, role="data")
+        cfd_loss_terms(pinn, pinn.xtrain, pinn.ytrain, pinn.rhotrain, 
+                       pinn.utrain, pinn.vtrain, pinn.ptrain, 
+                       pinn.muttrain, use_data_dropout, role="data")
+
+    # Obeservation loss terms
+    l_obs_u, l_obs_v, l_obs_p, l_obs_sch = \
+        observations_loss_terms(pinn, pinn.obs_train, use_data_dropout, 
+                                role="data")
 
     # Residuals loss terms
     l_f1, l_f2, l_f3, l_f4 = residual_loss_terms(pinn)
 
-    # Data loss
-    data_loss = (
+    # CFD loss
+    cfd_loss = (
         pinn.w_rho * l_rho +
         pinn.w_u   * l_u   +
         pinn.w_v   * l_v   +
         pinn.w_p   * l_p   +
         pinn.w_mut * l_mut
+    )
+    # Observations loss
+    obs_loss = (
+        pinn.w_obs_sch * l_obs_sch +
+        pinn.w_obs_u * l_obs_u +
+        pinn.w_obs_v * l_obs_v +
+        pinn.w_obs_p * l_obs_p 
     )
     # Residual loss
     res_loss = (
@@ -193,10 +240,14 @@ def loss_fn(pinn, return_terms=False):
         pinn.w_f4 * l_f4
     )
 
+    # Data loss
+    data_loss = cfd_loss + obs_loss
+
     # Total loss
-    loss = data_loss + res_loss  
+    loss = cfd_loss + obs_loss + res_loss  
 
     if return_terms:
+        # *** Retornar os l_obs_...
         return loss, l_rho, l_u, l_v, l_p, l_mut, l_f1, l_f2, l_f3, l_f4
 
     return loss, data_loss, res_loss
@@ -227,7 +278,7 @@ def validation_loss_fn(pinn):
     try:
         with torch.no_grad():
             l_val_rho, l_val_u, l_val_v, l_val_p, l_val_mut = \
-                data_loss_terms(pinn, pinn.xval, pinn.yval, pinn.rhoval, 
+                cfd_loss_terms(pinn, pinn.xval, pinn.yval, pinn.rhoval, 
                                 pinn.uval, pinn.vval, pinn.pval, 
                                 pinn.mutval, use_dropout=False, 
                                 role="validation")
