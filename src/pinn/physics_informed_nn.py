@@ -187,8 +187,9 @@ class PhysicsInformedNN(nn.Module):
             cfd_validation = cfd_datasets["validation"]
 
         # Boundary conditions for inverse problem
-        boundary_inv = params["identification"]["boundary_coditions"]["enabled"]
-
+        boundary_inv = (
+            params["identification"]["boundary_conditions"]["enabled"]
+        )
         self.use_inv_boundaries = (
             self.problem == "inverse" 
             and boundary_inv
