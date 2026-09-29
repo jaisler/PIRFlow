@@ -5,10 +5,13 @@
 
 import torch
 
-from .residuals import steady_euler_residuals
-from .residuals import steady_compressible_rans_residuals
+from .residuals import (
+    grad,
+    steady_euler_residuals,
+    steady_compressible_rans_residuals,
+)
 
-def zero_loss(pinn):
+def _zero_loss(pinn):
     """Create a scalar zero on the model device.
 
     Parameters
@@ -24,7 +27,7 @@ def zero_loss(pinn):
 
     return torch.tensor(0.0, dtype=torch.float32, device=pinn.device)
 
-def cfd_loss_terms(pinn, x, y, rho_true, u_true, v_true, p_true,
+def _cfd_loss_terms(pinn, x, y, rho_true, u_true, v_true, p_true,
                    mut_true=None, use_dropout=False, role="data"):
     """Compute mean-squared errors for the supervised flow fields.
 
@@ -54,7 +57,7 @@ def cfd_loss_terms(pinn, x, y, rho_true, u_true, v_true, p_true,
         rho_pred, u_pred, v_pred, p_pred = \
             pinn.net_fields(x, y, use_dropout, role=role)        
         # is not rans
-        l_mut = zero_loss(pinn)
+        l_mut = _zero_loss(pinn)
 
     elif pinn.eq == 'rans':
         rho_pred, u_pred, v_pred, p_pred, mut_pred \
@@ -76,8 +79,52 @@ def cfd_loss_terms(pinn, x, y, rho_true, u_true, v_true, p_true,
 
     return l_rho, l_u, l_v, l_p, l_mut
 
-def observations_loss_terms(pinn, observations, use_dropout=False, role="data"):
-    """Compute mean-squared errors for the supervised observed flow fields."""
+def _observations_loss_terms(pinn, observations, use_dropout=False, 
+                            role="data"):
+    """Compute mean-squared errors for the supervised 
+       observation flow fields.
+    """
+
+    if "schlieren" in observations:
+        schlieren = observations["schlieren"]
+
+        # Coordiantes
+        x_obs_sch = schlieren["X"][:,0:1].detach().requires_grad_(True)
+        y_obs_sch = schlieren["X"][:,1:2].detach().requires_grad_(True)
+
+        # Value
+        # Both tensors now represent d(rho*) / d(x*)
+        sch_obs_true = schlieren["value"].reshape(-1,1)
+        rho_obs_pred = pinn.net_fields(
+            x_obs_sch, y_obs_sch, use_dropout, role=role
+        )[0]
+        
+        # Calculate density gradient - schlieren
+        if pinn.schlieren_grad_type == "grad_x":
+            sch_obs_pred = grad(rho_obs_pred, x_obs_sch)
+ 
+        elif pinn.schlieren_grad_type == "grad_y":
+            sch_obs_pred = grad(rho_obs_pred, y_obs_sch)
+
+        elif pinn.schlieren_grad_type == "magnitude":
+            drho_dx = grad(rho_obs_pred, x_obs_sch)
+            drho_dy = grad(rho_obs_pred, y_obs_sch)
+
+            eps = 1e-8 
+            sch_obs_pred = torch.sqrt(
+                drho_dx.square() + drho_dy.square() + eps**2
+            )
+
+        else:
+            raise ValueError(
+                f"Unkown schlieren gradient type: {pinn.schlieren_grad_type}"
+            )
+
+        # schlieren loss
+        l_obs_sch = torch.mean((sch_obs_true - sch_obs_pred) ** 2)
+
+    else:
+         l_obs_sch = _zero_loss(pinn)
 
     if "pressure_taps" in observations:
         pressure_taps = observations["pressure_taps"]
@@ -88,28 +135,57 @@ def observations_loss_terms(pinn, observations, use_dropout=False, role="data"):
 
         # Value
         p_obs_true = pressure_taps["value"].reshape(-1,1)
-        _, _, _, p_obs_pred = \
-            pinn.net_fields(x_obs_p, y_obs_p, use_dropout, role=role)        
+        p_obs_pred = pinn.net_fields(
+            x_obs_p, y_obs_p, use_dropout, role=role
+        )[3]        
 
         # pressure taps loss
-        l_obs_p   = torch.mean((p_obs_true - p_obs_pred)   ** 2)
+        l_obs_p = torch.mean((p_obs_true - p_obs_pred) ** 2)
 
     else:
-        l_obs_p = zero_loss(pinn)
+        l_obs_p = _zero_loss(pinn)
 
+    if "velocity_u" in observations:
+        velocity_u = observations["velocity_u"]
 
+        # Coordiantes
+        x_obs_u = velocity_u["X"][:,0:1]
+        y_obs_u = velocity_u["X"][:,1:2]
 
-    # CFD losses terms
-    #l_obs_sch = torch.mean((sch_true - sch_pred) ** 2)
-    #l_obs_u   = torch.mean((u_true   - u_pred)   ** 2)
-    #l_obs_v   = torch.mean((v_true   - v_pred)   ** 2)
-    #l_obs_p   = torch.mean((p_true   - p_pred)   ** 2)
+        # Value
+        u_obs_true = velocity_u["value"].reshape(-1,1)
+        u_obs_pred = pinn.net_fields(
+            x_obs_u, y_obs_u, use_dropout, role=role
+        )[1]        
 
-    aux = zero_loss(pinn)
+        # u-velocity loss
+        l_obs_u = torch.mean((u_obs_true - u_obs_pred) ** 2)
 
-    return aux, aux, aux, l_obs_p
+    else:
+        l_obs_u = _zero_loss(pinn)
 
-def residual_loss_terms(pinn):
+    if "velocity_v" in observations:
+        velocity_v = observations["velocity_v"]
+
+        # Coordiantes
+        x_obs_v = velocity_v["X"][:,0:1]
+        y_obs_v = velocity_v["X"][:,1:2]
+
+        # Value
+        v_obs_true = velocity_v["value"].reshape(-1,1)
+        v_obs_pred = pinn.net_fields(
+             x_obs_v, y_obs_v, use_dropout, role=role
+        )[2]        
+
+        # v-velocity loss
+        l_obs_v = torch.mean((v_obs_true - v_obs_pred) ** 2)
+
+    else:
+        l_obs_v = _zero_loss(pinn)
+
+    return l_obs_sch, l_obs_u, l_obs_v, l_obs_p
+
+def _residual_loss_terms(pinn):
     """Compute mean-squared PDE residual terms.
 
     Parameters
@@ -125,7 +201,7 @@ def residual_loss_terms(pinn):
     """
 
     if pinn.model == 'supervised':
-        z = zero_loss(pinn)
+        z = _zero_loss(pinn)
         return z, z, z, z
     
     if pinn.model != 'pinn':
@@ -205,17 +281,17 @@ def loss_fn(pinn, return_terms=False):
 
     # CFD loss terms
     l_rho, l_u, l_v, l_p, l_mut = \
-        cfd_loss_terms(pinn, pinn.xtrain, pinn.ytrain, pinn.rhotrain, 
-                       pinn.utrain, pinn.vtrain, pinn.ptrain, 
-                       pinn.muttrain, use_data_dropout, role="data")
+        _cfd_loss_terms(pinn, pinn.xtrain, pinn.ytrain, pinn.rhotrain, 
+                        pinn.utrain, pinn.vtrain, pinn.ptrain, 
+                        pinn.muttrain, use_data_dropout, role="data")
 
     # Obeservation loss terms
-    l_obs_u, l_obs_v, l_obs_p, l_obs_sch = \
-        observations_loss_terms(pinn, pinn.obs_train, use_data_dropout, 
-                                role="data")
+    l_obs_sch, l_obs_u, l_obs_v, l_obs_p = \
+        _observations_loss_terms(pinn, pinn.obs_train, use_data_dropout, 
+                                 role="data")
 
     # Residuals loss terms
-    l_f1, l_f2, l_f3, l_f4 = residual_loss_terms(pinn)
+    l_f1, l_f2, l_f3, l_f4 = _residual_loss_terms(pinn)
 
     # CFD loss
     cfd_loss = (
@@ -243,12 +319,15 @@ def loss_fn(pinn, return_terms=False):
     # Data loss
     data_loss = cfd_loss + obs_loss
 
-    # Total loss
-    loss = cfd_loss + obs_loss + res_loss  
+    # Total loss: data loss + residual loss
+    loss = data_loss + res_loss  
 
     if return_terms:
-        # *** Retornar os l_obs_...
-        return loss, l_rho, l_u, l_v, l_p, l_mut, l_f1, l_f2, l_f3, l_f4
+        return (
+            loss, l_rho, l_u, l_v, l_p, l_mut,
+            l_obs_sch, l_obs_u, l_obs_v, l_obs_p,
+            l_f1, l_f2, l_f3, l_f4,
+        )
 
     return loss, data_loss, res_loss
 
@@ -278,7 +357,7 @@ def validation_loss_fn(pinn):
     try:
         with torch.no_grad():
             l_val_rho, l_val_u, l_val_v, l_val_p, l_val_mut = \
-                cfd_loss_terms(pinn, pinn.xval, pinn.yval, pinn.rhoval, 
+                _cfd_loss_terms(pinn, pinn.xval, pinn.yval, pinn.rhoval, 
                                 pinn.uval, pinn.vval, pinn.pval, 
                                 pinn.mutval, use_dropout=False, 
                                 role="validation")

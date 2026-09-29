@@ -279,6 +279,23 @@ class PhysicsInformedNN(nn.Module):
                     "training observation modality"
                 )
 
+            observations_config = params["identification"]["observations"]
+            # Schlieren
+            self.schlieren_enabled = (
+                observations_config["schlieren"]["enabled"]
+            )
+            self.schlieren_grad_type = (
+                observations_config["schlieren"]["grad_type"]
+            )
+            # Velocity
+            self.velocity_profiles_enabled = (
+                observations_config["velocity_profiles"]["enabled"]
+            )
+            # Pressure
+            self.pressure_taps_enabled = (
+                observations_config["pressure_taps"]["enabled"]
+            )
+
         # Check if there is a validation dataset
         self.has_observation_validation = bool(self.obs_validation)
 
@@ -1054,7 +1071,7 @@ class PhysicsInformedNN(nn.Module):
             "velocity_u": self.Uref,
             "velocity_v": self.Uref,
             "pressure_taps": self.pref,
-            "schlieren": 1.0,
+            "schlieren": self.rhoref / self.Lref,
         }
 
         # Convert each available modality into tensors.
