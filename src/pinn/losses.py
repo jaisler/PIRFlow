@@ -368,38 +368,52 @@ def validation_loss_fn(pinn):
 
     # Do not compute gradients
     try:
-        with torch.no_grad():
-            l_val_rho, l_val_u, l_val_v, l_val_p, l_val_mut = \
-                _cfd_loss_terms(pinn, pinn.xval, pinn.yval, pinn.rhoval, 
-                                pinn.uval, pinn.vval, pinn.pval, 
-                                pinn.mutval, use_dropout=False, 
-                                role="validation")
+        validation_loss = _zero_loss(pinn)
 
+        if pinn.has_cfd_validation:
+            with torch.no_grad():
+                # CFD loss terms
+                l_val_rho, l_val_u, l_val_v, l_val_p, l_val_mut = _cfd_loss_terms(
+                    pinn, 
+                    pinn.xval, 
+                    pinn.yval, 
+                    pinn.rhoval, 
+                    pinn.uval, 
+                    pinn.vval, 
+                    pinn.pval, 
+                    pinn.mutval, 
+                    use_dropout=False, 
+                    role="validation"
+                )
+
+                # CFD loss
+                validation_loss = validation_loss + (
+                    pinn.w_rho * l_val_rho +
+                    pinn.w_u   * l_val_u   +
+                    pinn.w_v   * l_val_v   +
+                    pinn.w_p   * l_val_p   +
+                    pinn.w_mut * l_val_mut
+                )
+
+        if pinn.has_observation_validation:
             # Obeservation loss terms
-            l_obs_sch, l_obs_u, l_obs_v, l_obs_p = \
-                _observations_loss_terms(pinn, pinn.obs_train, 
-                                        use_data_dropout=False, 
-                                        role="validation")
-            # CFD loss
-            cfd_val = (
-                pinn.w_rho * l_val_rho +
-                pinn.w_u   * l_val_u   +
-                pinn.w_v   * l_val_v   +
-                pinn.w_p   * l_val_p   +
-                pinn.w_mut * l_val_mut
+            l_obs_sch, l_obs_u, l_obs_v, l_obs_p = _observations_loss_terms(
+                pinn, 
+                pinn.obs_train, 
+                use_data_dropout=False, 
+                role="validation"
             )
+
             # Observations loss
-            obs_val = (
+            validation_loss = validation_loss + (
                 pinn.w_obs_sch * l_obs_sch +
                 pinn.w_obs_u * l_obs_u +
                 pinn.w_obs_v * l_obs_v +
                 pinn.w_obs_p * l_obs_p 
             )
-            # Validation loss
-            l_val = cfd_val + obs_val
 
     finally:
         # Return to training mode
         pinn.train(was_training)
 
-    return l_val
+    return validation_loss
