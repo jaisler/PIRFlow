@@ -53,29 +53,37 @@ def _cfd_loss_terms(pinn, x, y, rho_true, u_true, v_true, p_true,
         The viscosity loss is zero for Euler.
     """
 
-    if pinn.eq == 'euler': 
-        rho_pred, u_pred, v_pred, p_pred = \
-            pinn.net_fields(x, y, use_dropout, role=role)        
-        # is not rans
-        l_mut = _zero_loss(pinn)
+    if pinn.problem == "forward" or pinn.use_inv_boundaries:
 
-    elif pinn.eq == 'rans':
-        rho_pred, u_pred, v_pred, p_pred, mut_pred \
-            = pinn.net_fields(x, y, use_dropout, role=role)
+        if pinn.eq == 'euler': 
+            rho_pred, u_pred, v_pred, p_pred = \
+                pinn.net_fields(x, y, use_dropout, role=role)        
+            # is not rans
+            l_mut = _zero_loss(pinn)
 
-        if mut_true is None:
-            raise ValueError("For RANS, mut_t must be provided in loss_fn.")
-        # Loss of the turbulent viscosity         
-        l_mut = torch.mean((mut_true - mut_pred) ** 2)
-        
+        elif pinn.eq == 'rans':
+            rho_pred, u_pred, v_pred, p_pred, mut_pred \
+                = pinn.net_fields(x, y, use_dropout, role=role)
+
+            if mut_true is None:
+                raise ValueError("For RANS, mut_t must be provided in loss_fn.")
+            # Loss of the turbulent viscosity         
+            l_mut = torch.mean((mut_true - mut_pred) ** 2)
+            
+        else:
+            raise ValueError(f"Unknown equation type: {pinn.eq}")
+
+        # CFD losses terms
+        l_rho = torch.mean((rho_true - rho_pred) ** 2)
+        l_u   = torch.mean((u_true   - u_pred)   ** 2)
+        l_v   = torch.mean((v_true   - v_pred)   ** 2)
+        l_p   = torch.mean((p_true   - p_pred)   ** 2)
+
     else:
-        raise ValueError(f"Unknown equation type: {pinn.eq}")
-
-    # CFD losses terms
-    l_rho = torch.mean((rho_true - rho_pred) ** 2)
-    l_u   = torch.mean((u_true   - u_pred)   ** 2)
-    l_v   = torch.mean((v_true   - v_pred)   ** 2)
-    l_p   = torch.mean((p_true   - p_pred)   ** 2)
+        # if not forward or not bc from inverse
+        l_rho, l_u, l_v, l_p, l_mut = (
+            _zero_loss(pinn) for _ in range(5)
+        )
 
     return l_rho, l_u, l_v, l_p, l_mut
 
