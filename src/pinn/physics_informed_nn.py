@@ -229,18 +229,18 @@ class PhysicsInformedNN(nn.Module):
         if self.eq == "rans":
             validation_fields.append("mutval")
 
-        self.has_validation = (
-            cfd_validation is not None
+        # CFD validation flag
+        self.has_cfd_validation = (
+            (self.problem == "forward" or self.use_inv_boundaries)
+            and cfd_validation is not None
             and all(
-                cfd_validation[field] is not None
+                cfd_validation.get(field) is not None
+                and np.asarray(cfd_validation[field]).size > 0
                 for field in validation_fields
             )
         )
 
-        if (
-            (self.problem == "forward" or self.use_inv_boundaries)
-            and self.has_validation
-        ):
+        if self.has_cfd_validation:
             (
                 _,
                 self.xval,
@@ -258,8 +258,8 @@ class PhysicsInformedNN(nn.Module):
 
         # Observation datasets
         self.obs_train = {}
-        self.obs_validation = {}
-        if (self.problem == "inverse"):
+        self.obs_val = {}
+        if self.problem == "inverse":
 
             # Observation training data
             self.obs_train = self._prepare_observation_split(
@@ -296,8 +296,14 @@ class PhysicsInformedNN(nn.Module):
                 observations_config["pressure_taps"]["enabled"]
             )
 
+        # Get flag for validation of the observation data
+        self.has_observation_validation = bool(self.obs_val)
+
         # Check if there is a validation dataset
-        self.has_observation_validation = bool(self.obs_validation)
+        self.has_validation = (
+            self.has_cfd_validation
+            or self.has_observation_validation
+        )
 
         # Collocation dataset
         (
@@ -380,7 +386,7 @@ class PhysicsInformedNN(nn.Module):
                 self.network.build_graph(X_graph_train_norm)
 
             # Validatin graph
-            if self.has_validation:
+            if self.has_cfd_validation:
 
                 # X_graph_data_val
                 self.X_graph_val = torch.cat([self.xval, self.yval], dim=1)
