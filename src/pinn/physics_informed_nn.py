@@ -261,6 +261,12 @@ class PhysicsInformedNN(nn.Module):
         self.obs_val = {}
         if self.problem == "inverse":
 
+            if self.net_arch != "mlp":
+                raise NotImplementedError(
+                    "Observation prediction currently supports only the "
+                    "MLP architecture."
+                )
+
             # Observation training data
             self.obs_train = self._prepare_observation_split(
                 observation_datasets,
