@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 
-def print_loss(pinn, it):
+def print_loss(pinn, it, loss_val, terms):
     """Print the current training-loss components.
 
     Parameters
@@ -20,10 +20,10 @@ def print_loss(pinn, it):
     from ..pinn.losses import loss_fn
 
     (
-        loss_val, l_rho, l_u, l_v, l_p, l_mut, 
+        l_rho, l_u, l_v, l_p, l_mut, 
         l_obs_sch, l_obs_u, l_obs_v, l_obs_p,
         l_f1, l_f2, l_f3, l_f4 
-    ) = loss_fn(pinn, return_terms=True)
+    ) = terms
 
     print(
         f"It: {it:6d} | "

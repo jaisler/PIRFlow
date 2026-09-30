@@ -323,11 +323,16 @@ def loss_fn(pinn, return_terms=False):
     loss = data_loss + res_loss  
 
     if return_terms:
-        return (
-            loss, l_rho, l_u, l_v, l_p, l_mut,
+        terms = (
+            l_rho, l_u, l_v, l_p, l_mut,
             l_obs_sch, l_obs_u, l_obs_v, l_obs_p,
             l_f1, l_f2, l_f3, l_f4,
         )
+
+        # Logging values do not need their computation graphs.
+        detached_terms = tuple(term.detach() for term in terms)
+
+        return loss, data_loss, res_loss, detached_terms
 
     return loss, data_loss, res_loss
 
@@ -362,13 +367,28 @@ def validation_loss_fn(pinn):
                                 pinn.mutval, use_dropout=False, 
                                 role="validation")
 
-            l_val = (
+            # Obeservation loss terms
+            l_obs_sch, l_obs_u, l_obs_v, l_obs_p = \
+                _observations_loss_terms(pinn, pinn.obs_train, 
+                                        use_data_dropout=False, 
+                                        role="validation")
+            # CFD loss
+            cfd_val = (
                 pinn.w_rho * l_val_rho +
                 pinn.w_u   * l_val_u   +
                 pinn.w_v   * l_val_v   +
                 pinn.w_p   * l_val_p   +
                 pinn.w_mut * l_val_mut
             )
+            # Observations loss
+            obs_val = (
+                pinn.w_obs_sch * l_obs_sch +
+                pinn.w_obs_u * l_obs_u +
+                pinn.w_obs_v * l_obs_v +
+                pinn.w_obs_p * l_obs_p 
+            )
+            # Validation loss
+            l_val = cfd_val + obs_val
 
     finally:
         # Return to training mode

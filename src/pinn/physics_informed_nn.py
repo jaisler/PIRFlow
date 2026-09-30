@@ -749,8 +749,13 @@ class PhysicsInformedNN(nn.Module):
 
             for it in range(1, self.n_adam_iter + 1):
                 self.optimizer_adam.zero_grad()
+                
                 # Loss function
-                loss, data_loss, res_loss = loss_fn(self)                
+                loss, data_loss, res_loss, terms = loss_fn(
+                    self, 
+                    return_terms=True
+                )                
+                
                 # Backward propagation
                 loss.backward()
                 # Adam step
@@ -770,7 +775,7 @@ class PhysicsInformedNN(nn.Module):
 
                 # Print
                 if it % self.io_loss == 0:
-                    print_loss(self, it)
+                    print_loss(self, it, loss.detach(), terms)
 
         if self.use_lbfgs:
             # L-BFGS loop
@@ -791,13 +796,14 @@ class PhysicsInformedNN(nn.Module):
 
                 self.optimizer_lbfgs.step(closure)
 
-                # recompute once for logging
-                loss, data_loss, res_loss = loss_fn(self)
+                # Recompute once for logging
+                loss, data_loss, res_loss, terms = loss_fn(
+                    self,
+                    return_terms=True)
                             
                 self.ldata.append(data_loss.item())
                 self.lres.append(res_loss.item())
                 self.loss.append(loss.item())
-
                 self.n_epoch += 1   # increment once per LBFGS outer step
 
                 # validation data loss function
@@ -806,7 +812,7 @@ class PhysicsInformedNN(nn.Module):
 
                 # Print
                 if it % self.io_loss == 0:
-                    print_loss(self, it)
+                    print_loss(self, it, loss.detach(), terms)
 
         # After training, disable dropout by default
         self.enable_data_dropout = False
