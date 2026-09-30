@@ -1040,36 +1040,17 @@ class PhysicsInformedNN(nn.Module):
         if observation_datasets is None:
             return {}
 
-        velocity_profiles = observation_datasets.get("velocity_profiles")
-        if velocity_profiles is None:
-            velocity_profiles = {}
+        velocity_profiles = observation_datasets.get("velocity_profiles") or {}
+        modalities = {
+            "velocity_u": velocity_profiles.get("u"),
+            "velocity_v": velocity_profiles.get("v"),
+            "pressure_taps": observation_datasets.get("pressure_taps"),
+            "schlieren": observation_datasets.get("schlieren"),
+        }
 
-        velocity_u = velocity_profiles.get("u")
-        obs_u_subset = velocity_u[subset]
-
-        velocity_v = velocity_profiles.get("v")        
-        obs_v_subset = velocity_v[subset]
-
-        pressure_taps = observation_datasets.get("pressure_taps")
-        obs_pt_subset = pressure_taps[subset]
-
-        schlieren = observation_datasets.get("schlieren")
-        obs_sch_subset = schlieren[subset]
-
-        # Select the requested split for each available modality.
         obs_split = {
-            "velocity_u": (
-                None if velocity_u is None else obs_u_subset
-            ),
-            "velocity_v": (
-                None if velocity_v is None else obs_v_subset
-            ),
-            "pressure_taps": (
-                None if pressure_taps is None else obs_pt_subset
-            ),
-            "schlieren": (
-                None if schlieren is None else obs_sch_subset
-            ),
+            name: dataset.get(subset) if dataset is not None else None
+            for name, dataset in modalities.items()
         }
 
         # Reference scales for the measured values.
