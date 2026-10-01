@@ -75,9 +75,9 @@ identification:
         level: 0.01          # 0.01 means 1% noise
 
       sampling:
-        points: 4096
-        uniform_fraction: 0.70
-        alpha: 1.0
+        points: 5000
+        uniform_fraction: 0.50
+        alpha: 1.4
 
     velocity_profiles:
       enabled: true
@@ -88,10 +88,15 @@ identification:
       enabled: true
       filename: pressure_taps      # Must be a csv file.
 
+  boundary_conditions:             # Use sampling setup
+      enabled: true
+      names:
+        - inlet
+
 # Neural network
 # --------------
 network:
-  architecture: gnn          # Options: mlp or gnn 
+  architecture: mlp          # Options: mlp or gnn 
 
   mlp:
     layers: [2, 32, 32, 32, 4] 
@@ -184,6 +189,12 @@ loss:
       v: 200.0
       p: 4.0
       mut: 1.0
+
+    observations:
+      schlieren: 1.0
+      u: 1.0
+      v: 1.0
+      p: 1.0
 
     residual:
       f1: 1.0

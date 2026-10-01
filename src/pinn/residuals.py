@@ -18,12 +18,10 @@ def grad(y, x):
     """
 
     return torch.autograd.grad(
-        y,
-        x,
+        outputs=y,
+        inputs=x,
         grad_outputs=torch.ones_like(y),
         create_graph=True,
-        retain_graph=True,
-        only_inputs=True,
     )[0]
 
 

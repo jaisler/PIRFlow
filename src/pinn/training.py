@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: MIT
 import time
 
-from src.utils import print_metrics_table
 from src.utils import plot_history_training
 
 def training_is_enabled(params):
@@ -76,43 +75,3 @@ def train_model(model, params):
 
     # Plot history training
     plot_history_training(model, params)
-
-
-def evaluate_data(model, data):
-    """Evaluate a model on the prepared test dataset.
-    
-    Parameters
-    ----------
-    model : PhysicsInformedNN
-        Model to evaluate.
-    data : dict
-        Prepared dataset mapping.
-
-    Returns
-    -------
-    None
-        Metrics are printed to standard output.
-    """
-
-    test_data_available = (
-        data["test"]["xtest"] is not None 
-        and data["test"]["ytest"] is not None 
-        and data["test"]["xtest"].shape[0] > 0
-    )
-
-    if not test_data_available:
-        print("---------------------------------------")
-        print("Skipping test evaluation.")
-        print("No test data were created. "
-              "This usually means N_test_data = 0 after the "
-              "train/validation/test split.")
-        return
-
-    test_metrics = model.evaluate_data(
-        data["test"]["xtest"], data["test"]["ytest"], data["test"]["rhotest"], 
-        data["test"]["utest"], data["test"]["vtest"], data["test"]["ptest"], 
-        data["test"]["muttest"]
-    )
-
-    # Print metrics of the test dataset
-    print_metrics_table(test_metrics, title="Test dataset metrics")
