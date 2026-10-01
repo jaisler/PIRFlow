@@ -53,37 +53,29 @@ def _cfd_loss_terms(pinn, x, y, rho_true, u_true, v_true, p_true,
         The viscosity loss is zero for Euler.
     """
 
-    if pinn.problem == "forward" or pinn.use_inv_boundaries:
+    if pinn.eq == 'euler': 
+        rho_pred, u_pred, v_pred, p_pred = \
+            pinn.net_fields(x, y, use_dropout, role=role)        
+        # is not rans
+        l_mut = _zero_loss(pinn)
 
-        if pinn.eq == 'euler': 
-            rho_pred, u_pred, v_pred, p_pred = \
-                pinn.net_fields(x, y, use_dropout, role=role)        
-            # is not rans
-            l_mut = _zero_loss(pinn)
+    elif pinn.eq == 'rans':
+        rho_pred, u_pred, v_pred, p_pred, mut_pred \
+            = pinn.net_fields(x, y, use_dropout, role=role)
 
-        elif pinn.eq == 'rans':
-            rho_pred, u_pred, v_pred, p_pred, mut_pred \
-                = pinn.net_fields(x, y, use_dropout, role=role)
-
-            if mut_true is None:
-                raise ValueError("For RANS, mut_t must be provided in loss_fn.")
-            # Loss of the turbulent viscosity         
-            l_mut = torch.mean((mut_true - mut_pred) ** 2)
-            
-        else:
-            raise ValueError(f"Unknown equation type: {pinn.eq}")
-
-        # CFD losses terms
-        l_rho = torch.mean((rho_true - rho_pred) ** 2)
-        l_u   = torch.mean((u_true   - u_pred)   ** 2)
-        l_v   = torch.mean((v_true   - v_pred)   ** 2)
-        l_p   = torch.mean((p_true   - p_pred)   ** 2)
-
+        if mut_true is None:
+            raise ValueError("For RANS, mut_t must be provided in loss_fn.")
+        # Loss of the turbulent viscosity         
+        l_mut = torch.mean((mut_true - mut_pred) ** 2)
+        
     else:
-        # if not forward or not bc from inverse
-        l_rho, l_u, l_v, l_p, l_mut = (
-            _zero_loss(pinn) for _ in range(5)
-        )
+        raise ValueError(f"Unknown equation type: {pinn.eq}")
+
+    # CFD losses terms
+    l_rho = torch.mean((rho_true - rho_pred) ** 2)
+    l_u   = torch.mean((u_true   - u_pred)   ** 2)
+    l_v   = torch.mean((v_true   - v_pred)   ** 2)
+    l_p   = torch.mean((p_true   - p_pred)   ** 2)
 
     return l_rho, l_u, l_v, l_p, l_mut
 
@@ -288,10 +280,16 @@ def loss_fn(pinn, return_terms=False):
     use_data_dropout = pinn.enable_data_dropout
 
     # CFD loss terms
-    l_rho, l_u, l_v, l_p, l_mut = \
-        _cfd_loss_terms(pinn, pinn.xtrain, pinn.ytrain, pinn.rhotrain, 
-                        pinn.utrain, pinn.vtrain, pinn.ptrain, 
-                        pinn.muttrain, use_data_dropout, role="data")
+    if pinn.problem == "forward" or pinn.use_inv_boundaries:
+        l_rho, l_u, l_v, l_p, l_mut = \
+            _cfd_loss_terms(pinn, pinn.xtrain, pinn.ytrain, pinn.rhotrain, 
+                            pinn.utrain, pinn.vtrain, pinn.ptrain, 
+                            pinn.muttrain, use_data_dropout, role="data")
+    else:
+        # if not forward or not bc from inverse
+        l_rho, l_u, l_v, l_p, l_mut = (
+            _zero_loss(pinn) for _ in range(5)
+        )
 
     # Obeservation loss terms
     l_obs_sch, l_obs_u, l_obs_v, l_obs_p = \

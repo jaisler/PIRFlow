@@ -149,7 +149,8 @@ class PhysicsInformedNN(nn.Module):
         self.n_epoch = 0
         self.enable_data_dropout = False
         # Turbulent viscosity
-        self.mut = None 
+        self.mut = None
+        self.mut_scale = 1.0  
 
         # Physical parameters
         phys_cfg = params['physics']
