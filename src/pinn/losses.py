@@ -387,8 +387,9 @@ def validation_loss_fn(pinn):
     # Use the model in prediction/evaluation mode
     pinn.eval()
 
-    # Do not compute gradients
     try:
+        validation_loss = _zero_loss(pinn)
+
         if pinn.has_cfd_validation:
             with torch.no_grad():
                 # CFD loss terms
@@ -416,6 +417,8 @@ def validation_loss_fn(pinn):
                     pinn.w_mut * l_val_mut
                 )
 
+            validation_loss = validation_loss + cfd_loss
+
         if pinn.has_observation_validation:
             with torch.enable_grad():
             # Obeservation loss terms
@@ -435,7 +438,8 @@ def validation_loss_fn(pinn):
                     pinn.w_obs_v * l_obs_v +
                     pinn.w_obs_p * l_obs_p
                 )
-        validation_loss = cfd_loss + observation_loss.detach()
+
+            validation_loss = validation_loss + observation_loss.detach()
 
     finally:
         # Return to training mode
