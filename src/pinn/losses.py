@@ -421,7 +421,7 @@ def validation_loss_fn(pinn):
 
         if pinn.has_observation_validation:
             with torch.enable_grad():
-            # Obeservation loss terms
+            # Observation loss terms
                 l_obs_sch, l_obs_u, l_obs_v, l_obs_p = (
                     _observations_loss_terms(
                         pinn,
@@ -442,7 +442,7 @@ def validation_loss_fn(pinn):
             validation_loss = validation_loss + observation_loss.detach()
 
     finally:
-        # Return to training mode
+        # Restore the model's original mode
         pinn.train(was_training)
 
     return validation_loss.detach()
