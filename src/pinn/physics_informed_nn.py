@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import os
 
+from .residuals import grad
 from .losses import loss_fn, validation_loss_fn
 from ..utils import print_loss, compute_metrics
 
@@ -668,8 +669,8 @@ class PhysicsInformedNN(nn.Module):
             # GNN PDE residual evaluation
             if role == "residual":
                 if self.X_res is None:
-                    raise ValueError("GNN residual evaluation requires collocation " \
-                                     "points.")
+                    raise ValueError("GNN residual evaluation requires " \
+                                     "collocation points.")
                 
                 if X.shape[0] != self.n_res:
                     raise ValueError("The number of residual coordinates passed " \
@@ -1218,6 +1219,162 @@ class PhysicsInformedNN(nn.Module):
  
         return xstar, ystar
 
+    def _evaluate_cfd(self, xdata, ydata, rhodata,
+                     udata, vdata, pdata, mutdata=None):
+        """Compute error metrics on held-out cfd data.
+            
+        Parameters
+        ----------
+        xdata, ydata : numpy.ndarray
+            Test-point coordinates.
+        rhodata, udata, vdata, pdata : numpy.ndarray
+            Reference test values for density, velocity, and pressure.
+        mutdata : numpy.ndarray or None, optional
+            Reference eddy viscosity for RANS cases.
+
+        Returns
+        -------
+        dict
+            Error metrics for the test dataset.
+        """
+
+        self.eval()
+
+        # Non-dimensionalize data using the same scaling as training
+        xstar, ystar, rhostar, ustar, vstar, pstar, mutstar = \
+            self.get_nondimensional_data(xdata, ydata, rhodata, udata,
+                                         vdata, pdata, mutdata)
+
+        # Coordinates
+        X = np.column_stack((xstar, ystar))
+
+        # Torch tensors
+        X = torch.tensor(X, dtype=torch.float32, device=self.device)
+        rho_true = torch.tensor(rhostar, dtype=torch.float32,
+                                device=self.device).reshape(-1, 1)
+        u_true = torch.tensor(ustar, dtype=torch.float32,
+                              device=self.device,).reshape(-1, 1)
+        v_true = torch.tensor(vstar, dtype=torch.float32,
+                              device=self.device).reshape(-1, 1)
+        p_true = torch.tensor(pstar, dtype=torch.float32,
+                              device=self.device,).reshape(-1, 1)
+
+        if self.eq == "rans":
+            if mutstar is None:
+                raise ValueError("For RANS evaluation, mutdata must be provided.")
+
+            mut_true = torch.tensor(mutstar, dtype=torch.float32, 
+                                    device=self.device).reshape(-1, 1)
+
+        with torch.no_grad():
+            x_t = X[:, 0:1]
+            y_t = X[:, 1:2]
+
+            if self.eq == "euler":
+                rho_pred, u_pred, v_pred, p_pred = \
+                    self.net_fields(x_t, y_t, use_dropout=False, role="query")
+
+            elif self.eq == "rans":
+                rho_pred, u_pred, v_pred, p_pred, muthat_pred = \
+                    self.net_fields(x_t, y_t, use_dropout=False, role="query")
+
+                # Recover mutstar
+                mut_pred = self.mut_scale * muthat_pred
+
+        metrics = {}
+
+        metrics["rho"] = compute_metrics(rho_pred, rho_true)
+        metrics["u"]   = compute_metrics(u_pred,   u_true)
+        metrics["v"]   = compute_metrics(v_pred,   v_true)
+        metrics["p"]   = compute_metrics(p_pred,   p_true)
+
+        if self.eq == "rans":
+            metrics["mut"] = compute_metrics(mut_pred, mut_true)
+
+        return metrics
+
+    def _evaluate_observation(self, test_observation):
+        """Compute error metrics on held-out observation data."""
+
+        # Switch to evaluation mode, affecting layers such as dropout 
+        # and BatchNorm.    
+        # Gradients remain available for computing Schlieren density 
+        # derivatives.
+        self.eval()
+
+        metrics = {}
+
+        if "schlieren" in test_observation:
+            schlieren = test_observation["schlieren"]
+            x_obs_sch = schlieren["X"][:,0:1].detach().requires_grad_(True)
+            y_obs_sch = schlieren["X"][:,1:2].detach().requires_grad_(True)
+            sch_obs_true = schlieren["value"].reshape(-1,1)
+            # Prediction: Note that it predicts density (rho)
+            rho_obs_pred = self.net_fields(
+                x_obs_sch, y_obs_sch, use_dropout=False, role="query"
+            )[0]
+
+            # Calculate density gradient - schlieren
+            if self.schlieren_grad_type == "grad_x":
+                sch_obs_pred = grad(rho_obs_pred, x_obs_sch)
+    
+            elif self.schlieren_grad_type == "grad_y":
+                sch_obs_pred = grad(rho_obs_pred, y_obs_sch)
+
+            elif self.schlieren_grad_type == "magnitude":
+                drho_dx = grad(rho_obs_pred, x_obs_sch)
+                drho_dy = grad(rho_obs_pred, y_obs_sch)
+
+                eps = 1e-8 
+                sch_obs_pred = torch.sqrt(
+                    drho_dx.square() + drho_dy.square() + eps**2
+                )
+
+            else:
+                raise ValueError(
+                    "Unsupported schlieren_grad_type: "
+                    f"{self.schlieren_grad_type!r}. "
+                    "Expected 'grad_x', 'grad_y', or 'magnitude'."
+                )
+
+            # Schlieren metric
+            metrics["sch_obs"] = compute_metrics(sch_obs_pred, sch_obs_true)
+
+        if "velocity_u" in test_observation:
+            velocity_u = test_observation["velocity_u"]
+            x_obs_u = velocity_u["X"][:,0:1]
+            y_obs_u = velocity_u["X"][:,1:2]
+            u_obs_true = velocity_u["value"].reshape(-1,1)
+            # Prediction
+            u_obs_pred = self.net_fields(x_obs_u, y_obs_u, use_dropout=False, 
+                                         role="query")[1]        
+            # u-velocity metric
+            metrics["u_obs"] = compute_metrics(u_obs_pred, u_obs_true)
+
+        if "velocity_v" in test_observation:
+            velocity_v = test_observation["velocity_v"]
+            x_obs_v = velocity_v["X"][:,0:1]
+            y_obs_v = velocity_v["X"][:,1:2]
+            v_obs_true = velocity_v["value"].reshape(-1,1)
+            # Predition
+            v_obs_pred = self.net_fields(x_obs_v, y_obs_v, use_dropout=False, 
+                                         role="query")[2]    
+            # v-velocity metric
+            metrics["v_obs"] = compute_metrics(v_obs_pred, v_obs_true)
+
+        if "pressure_taps" in test_observation:
+            pressure_taps = test_observation["pressure_taps"]
+            x_obs_p = pressure_taps["X"][:,0:1]
+            y_obs_p = pressure_taps["X"][:,1:2]
+            p_obs_true = pressure_taps["value"].reshape(-1,1)
+            # Prediction
+            p_obs_pred = self.net_fields(x_obs_p, y_obs_p, use_dropout=False, 
+                                        role="query")[3]        
+            # pressure metric
+            metrics["p_obs"] = compute_metrics(p_obs_pred, p_obs_true)
+
+        return metrics
+
     def save_model(self, filepath, filename):
         """Save model and training state to a checkpoint.
 
@@ -1328,83 +1485,6 @@ class PhysicsInformedNN(nn.Module):
         print("---------------------------------------")
         print(f"Model loaded from: {filepath}")
 
-    def evaluate_data(self, xdata, ydata, rhodata,
-                      udata, vdata, pdata, mutdata=None):
-        """Compute error metrics on held-out physical data.
-            
-        Parameters
-        ----------
-        xdata, ydata : numpy.ndarray
-            Test-point coordinates.
-        rhodata, udata, vdata, pdata : numpy.ndarray
-            Reference test values for density, velocity, and pressure.
-        mutdata : numpy.ndarray or None, optional
-            Reference eddy viscosity for RANS cases.
-
-        Returns
-        -------
-        dict
-            Error metrics for the test dataset.
-        """
-
-        self.eval()
-
-        # Non-dimensionalize data using the same scaling as training
-        xstar, ystar, rhostar, ustar, vstar, pstar, mutstar = \
-            self.get_nondimensional_data(xdata, ydata, rhodata, udata,
-                                         vdata, pdata, mutdata)
-
-        # Coordinates
-        X = np.column_stack((xstar, ystar))
-
-        X = torch.tensor(X, dtype=torch.float32, device=self.device)
-
-        rho_true = torch.tensor(rhostar, dtype=torch.float32,
-                                device=self.device).reshape(-1, 1)
-
-        u_true = torch.tensor(ustar, dtype=torch.float32,
-                              device=self.device,).reshape(-1, 1)
-
-        v_true = torch.tensor(vstar, dtype=torch.float32,
-                              device=self.device).reshape(-1, 1)
-
-        p_true = torch.tensor(pstar, dtype=torch.float32,
-                              device=self.device,).reshape(-1, 1)
-
-        if self.eq == "rans":
-            if mutstar is None:
-                raise ValueError("For RANS evaluation, mutdata must be provided.")
-
-            mut_true = torch.tensor(mutstar, dtype=torch.float32, 
-                                    device=self.device).reshape(-1, 1)
-
-        with torch.no_grad():
-            x_t = X[:, 0:1]
-            y_t = X[:, 1:2]
-
-            if self.eq == "euler":
-                rho_pred, u_pred, v_pred, p_pred = \
-                    self.net_fields(x_t, y_t, use_dropout=False, role="query")
-
-            elif self.eq == "rans":
-                rho_pred, u_pred, v_pred, p_pred, muthat_pred = \
-                    self.net_fields(x_t, y_t, use_dropout=False, role="query")
-
-                # Recover mutstar
-                mut_pred = self.mut_scale * muthat_pred
-
-        metrics = {}
-
-        metrics["rho"] = compute_metrics(rho_pred, rho_true)
-        metrics["u"]   = compute_metrics(u_pred,   u_true)
-        metrics["v"]   = compute_metrics(v_pred,   v_true)
-        metrics["p"]   = compute_metrics(p_pred,   p_true)
-
-        if self.eq == "rans":
-            metrics["mut"] = compute_metrics(mut_pred, mut_true)
-
-        return metrics
-    
     def get_data_loss(self):
         """Return the supervised data-loss history.
 
