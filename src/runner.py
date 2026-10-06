@@ -7,7 +7,8 @@ from src.observation import ObservationData, prepare_observation_datasets
 from src.postprocessing import run_flowfield_postprocessing
 from src.pinn import (
     build_pinn_model, 
-    evaluate_test_dataset, 
+    evaluate_test_cfd_dataset, 
+    evaluate_test_observation_dataset, 
     train_model,
 )
 from src.sampling import (
@@ -129,9 +130,17 @@ def run() -> None:
     train_model(model, params)
 
     if problem == "forward":
-        # Evaluate test dataset
-        evaluate_test_dataset(model, cfd_datasets["test"])
+        # Evaluate held out CFD data
+        evaluate_test_cfd_dataset(model, cfd_datasets["test"])
 
-        # Postprocess flowfield
-        if params["run"]["routines"].get("postprocessing", False):
-            run_flowfield_postprocessing(model, params)
+    elif problem == "inverse":
+        # Evaluate held out CFD boundary data, when enabled
+        if boundary_only:
+            evaluate_test_cfd_dataset(model, cfd_datasets['test'])
+
+        # Evaluate held out observations
+        evaluate_test_observation_dataset(model, observation_datasets)
+
+    # Postprocess flowfield
+    if params["run"]["routines"].get("postprocessing", False):
+        run_flowfield_postprocessing(model, params)
