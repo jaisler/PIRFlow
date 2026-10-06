@@ -36,10 +36,10 @@ files:
 # Run setup
 # ---------
 run:
-  model: pinn                # Options: supervised or pinn
-  equation: euler            # Options: euler or rans
-  device: cpu                # Options: cpu or cuda
   problem: inverse           # Options: forward or inverse
+  model: pinn                # Options: supervised or pinn
+  equation: rans             # Options: euler or rans
+  device: cpu                # Options: cpu or cuda
 
   routines:
     sampling: true
@@ -68,11 +68,10 @@ identification:
 
       rendering:
         blur_sigma_pixels: 0.8
-        normalization_percentile: 99.0
 
       noise:
-        type: gaussian       # Options: none, gaussian
-        level: 0.01          # 0.01 means 1% noise
+        type: gaussian            # Options: none, gaussian
+        level: 0.01               # 0.01 means 1% noise
 
       sampling:
         points: 5000
@@ -99,7 +98,7 @@ network:
   architecture: mlp          # Options: mlp or gnn 
 
   mlp:
-    layers: [2, 32, 32, 32, 4] 
+    layers: [2, 32, 32, 32, 5] 
     activation: tanh         # Options: tanh, sigmoid, sin, softplus, silu/swish or gelu
 
     dropout:
@@ -162,7 +161,7 @@ dataset:
 optimizer:
   adam:
     enabled: true
-    iterations: 8
+    iterations: 20
     learning_rate: 4.0e-4
 
     scheduler:
@@ -173,7 +172,7 @@ optimizer:
   # if both are enabled.
   lbfgs:
     enabled: true
-    iterations: 4
+    iterations: 2
     learning_rate: 1.0
     max_iter_per_step: 30
 
@@ -234,27 +233,27 @@ post_processing:
     - Pressure
     - Velocity
     - Velocity
-    #- Eddy_Viscosity
+    - Eddy_Viscosity
 
   latex:
     - $\rho$ $[kg/m^{3}]$
     - $p$ $[Pa]$
     - $u$ $[m/s]$
     - $v$ $[m/s]$
-    #- $\hat{\mu}_{t}$ $[kg/m \cdot s]$ 
+    - $\hat{\mu}_{t}$ $[kg/m \cdot s]$ 
 
-  components: [0, 0, 0, 1] #, 0
+  components: [0, 0, 0, 1, 0]
 
   colormaps:
     - bwr
     - bwr
     - bwr
     - bwr
-    #- bwr
+    - bwr
 
   scales:
     - [0.0, 1.3]
     - [1.3e4, 1.67e5]
     - [-750.0, 950.0]
     - [-315.0, 315.0]
-    #- [0.0,0.05]
+    - [0.0,0.05]
