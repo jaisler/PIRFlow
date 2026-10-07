@@ -241,21 +241,9 @@ def generate_synthetic_schlieren(
         rendering.get("blur_sigma_pixels", 0.8)
     )
 
-    normalization_percentile = float(
-        rendering.get(
-            "normalization_percentile",
-            99.0,
-        )
-    )
-
     if blur_sigma_pixels < 0.0:
         raise ValueError(
             "blur_sigma_pixels cannot be negative"
-        )
-
-    if not 0.0 < normalization_percentile <= 100.0:
-        raise ValueError(
-            "normalization_percentile must be in (0, 100]"
         )
 
     # Internal supersampled resolution.
@@ -351,25 +339,10 @@ def generate_synthetic_schlieren(
         )
 
     # Normalize the clean signal.
-    signal_scale = np.percentile(
-        np.abs(signal[valid]),
-        normalization_percentile,
-    )
-
-    if (
-        not np.isfinite(signal_scale)
-        or signal_scale <= 0.0
-    ):
+    if not np.all(np.isfinite(signal[valid])):
         raise ValueError(
-            "The Schlieren signal has zero or invalid scale"
+            "The Schlieren signal contains non-finite values"
         )
-
-    signal = signal / signal_scale
-
-    if grad_type == "magnitude":
-        signal = np.clip(signal, 0.0, 1.0)
-    else:
-        signal = np.clip(signal, -1.0, 1.0)
 
     # Final camera-pixel coordinates.
     final_dx = (xmax - xmin) / width

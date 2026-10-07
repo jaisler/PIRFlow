@@ -6,8 +6,8 @@ import numpy as np
 from .schlieren_sampling import sample_schlieren_observations
 from ..datasets import create_split_indices
 
-def prepare_observation_data(raw_observation, params):
-    """Prepare all loaded observation modalities for model use.
+def prepare_observation_datasets(raw_observation, params):
+    """Prepare training, validation, and test datasets for each modality.
 
     Parameters
     ----------
@@ -21,7 +21,12 @@ def prepare_observation_data(raw_observation, params):
     Returns
     -------
     dict
-        Prepared observations organized by modality and dataset subset.
+        Prepared datasets for the modalities present in ``raw_observation``.
+        Schlieren and pressure-tap data map directly to ``"training"``,
+        ``"validation"``, and ``"test"`` subsets. Velocity profiles map to
+        velocity components first, then to the same subsets. Each subset
+        contains coordinates under ``"X"`` with shape ``(N, dimension)``
+        and measurements under ``"value"`` with shape ``(N, 1)``.
     """
 
     prepared = {}

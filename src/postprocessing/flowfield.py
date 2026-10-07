@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from src.utils import compute_metrics as compute_scalar_metrics
+from src.utils import compute_metrics
 from src.utils import print_metrics_table
 
 class FlowFieldPostProcessor:
@@ -81,9 +81,9 @@ class FlowFieldPostProcessor:
         self.write_comparison_vtk(prefix)
 
         # Compute the metrics
-        self.compute_metrics()
+        self.compute_mesh_metrics()
         # Print metrics
-        self.print_metrics()
+        self.print_mesh_metrics()
 
     def predict_on_mesh(self):
         """Evaluate the trained model at every CFD mesh point.
@@ -251,7 +251,7 @@ class FlowFieldPostProcessor:
 
         return self.error_fields
     
-    def compute_metrics(self):
+    def compute_mesh_metrics(self):
         """Compute scalar metrics for every predicted mesh field.
 
         Returns
@@ -262,25 +262,46 @@ class FlowFieldPostProcessor:
 
         for name in self.predicted_fields:
             pred_np = self.predicted_fields[name]
-            ref_np = self.reference_fields[name]
+            true_np = self.reference_fields[name]
+
+            # Non-dimensional fields
+            if name == "rho":
+                pred_star = pred_np / self.model.rhoref
+                true_star = true_np / self.model.rhoref 
+            elif name == "u":
+                pred_star = pred_np / self.model.Uref
+                true_star = true_np / self.model.Uref
+            elif name == "v":
+                pred_star = pred_np / self.model.Uref
+                true_star = true_np / self.model.Uref
+            elif name == "p":
+                pred_star = (pred_np 
+                    / (self.model.rhoref * self.model.Uref * self.model.Uref)
+                )
+                true_star = (true_np 
+                    / (self.model.rhoref * self.model.Uref * self.model.Uref) 
+                )
+            elif name == "mut":
+                pred_star = pred_np / self.model.muref
+                true_star = true_np / self.model.muref
 
             pred_torch = torch.tensor(
-                pred_np,
+                pred_star,
                 dtype=torch.float32,
             ).reshape(-1, 1)
 
-            ref_torch = torch.tensor(
-                ref_np,
+            true_torch = torch.tensor(
+                true_star,
                 dtype=torch.float32,
             ).reshape(-1, 1)
 
-            self.metrics[name] = compute_scalar_metrics(
+            self.metrics[name] = compute_metrics(
                 pred_torch,
-                ref_torch,
+                true_torch,
                 eps=self.eps,
             )
 
-    def print_metrics(self):
+    def print_mesh_metrics(self):
         """Print the mesh-based metric table.
 
         Returns

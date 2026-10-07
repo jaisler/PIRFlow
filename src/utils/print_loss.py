@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: MIT
-from ..pinn.losses import loss_fn
 
-def print_loss(pinn, it):
+def print_loss(pinn, it, loss_val, terms):
     """Print the current training-loss components.
 
     Parameters
@@ -16,66 +15,93 @@ def print_loss(pinn, it):
     None
         Losses are written to standard output.
     """
-    if pinn.model == 'pinn':
-
-        if pinn.eq == 'euler':
-            loss_val, l_rho, l_u, l_v, l_p, l_mut, l_f1, l_f2, l_f3, l_f4 = \
-                loss_fn(pinn, return_terms=True)
-
-            print(
-                f"It: {it:6d} | "
-                f"Loss: {loss_val.item():.3e} | "
-                f"rho: {l_rho.item():.3e} | "
-                f"u: {l_u.item():.3e} | "
-                f"v: {l_v.item():.3e} | "
-                f"p: {l_p.item():.3e} | "
-                f"f1: {l_f1.item():.3e} | "
-                f"f2: {l_f2.item():.3e} | "
-                f"f3: {l_f3.item():.3e} | "
-                f"f4: {l_f4.item():.3e}"
-            )
-
-        elif pinn.eq == 'rans':
-            loss_val, l_rho, l_u, l_v, l_p, l_mut, l_f1, l_f2, l_f3, l_f4 = \
-                loss_fn(pinn, return_terms=True)
-
-            print(
-                f"It: {it:6d} | "
-                f"Loss: {loss_val.item():.3e} | "
-                f"rho: {l_rho.item():.3e} | "
-                f"u: {l_u.item():.3e} | "
-                f"v: {l_v.item():.3e} | "
-                f"p: {l_p.item():.3e} | "
-                f"mut: {l_mut.item():.3e} | "
-                f"f1: {l_f1.item():.3e} | "
-                f"f2: {l_f2.item():.3e} | "
-                f"f3: {l_f3.item():.3e} | "
-                f"f4: {l_f4.item():.3e}"
-            )
     
-    elif pinn.model == 'supervised':
-        loss_val, l_rho, l_u, l_v, l_p, l_mut, l_f1, l_f2, l_f3, l_f4 = \
-            loss_fn(pinn, return_terms=True)
+    # Defer the import to avoid circular imports.
+    from ..pinn.losses import loss_fn
 
-        if pinn.eq == 'euler':
+    (
+        l_rho, l_u, l_v, l_p, l_mut, 
+        l_obs_sch, l_obs_u, l_obs_v, l_obs_p,
+        l_f1, l_f2, l_f3, l_f4 
+    ) = terms
+
+    print(
+        f"It: {it:6d} | "
+        f"weighted total loss: {loss_val.item():.3e} | ",
+        end="",
+    )        
+
+    if pinn.model == "pinn":
+
+        print(
+            f"res_1: {l_f1.item():.3e} | "
+            f"res_2: {l_f2.item():.3e} | "
+            f"res_3: {l_f3.item():.3e} | "
+            f"res_4: {l_f4.item():.3e} | ",
+            end="", 
+        )
+
+    if pinn.problem == "forward":
+        
+        print(
+            f"cfd_rho: {l_rho.item():.3e} | "
+            f"cfd_u: {l_u.item():.3e} | "
+            f"cfd_v: {l_v.item():.3e} | "
+            f"cfd_p: {l_p.item():.3e} | ",
+            end="", 
+        )
+
+        if pinn.eq == 'rans':
 
             print(
-                f"It: {it:6d} | "
-                f"Loss: {loss_val.item():.3e} | "
-                f"rho: {l_rho.item():.3e} | "
-                f"u: {l_u.item():.3e} | "
-                f"v: {l_v.item():.3e} | "
-                f"p: {l_p.item():.3e} "
+                f"cfd_mut: {l_mut.item():.3e} | ",
+                end="",
             )
 
-        elif pinn.eq == 'rans':
+    elif pinn.problem == "inverse":
+
+        if pinn.use_inv_boundaries:
 
             print(
-                f"It: {it:6d} | "
-                f"Loss: {loss_val.item():.3e} | "
-                f"rho: {l_rho.item():.3e} | "
-                f"u: {l_u.item():.3e} | "
-                f"v: {l_v.item():.3e} | "
-                f"p: {l_p.item():.3e} | "
-                f"mut: {l_mut.item():.3e}"
+                f"bc_rho: {l_rho.item():.3e} | "
+                f"bc_u: {l_u.item():.3e} | "
+                f"bc_v: {l_v.item():.3e} | "
+                f"bc_p: {l_p.item():.3e} | ",
+                end="", 
             )
+
+            if pinn.eq == 'rans':
+
+                print(
+                    f"bc_mut: {l_mut.item():.3e} | ",
+                    end="", 
+                )
+
+        if pinn.schlieren_enabled:
+
+            print(
+                f"obs_sch: {l_obs_sch.item():.3e} | ",
+                end="", 
+            )
+
+        if pinn.velocity_profiles_enabled:
+
+            print(
+                f"obs_u: {l_obs_u.item():.3e} | "
+                f"obs_v: {l_obs_v.item():.3e} | ",
+                end="", 
+            )
+
+        if pinn.pressure_taps_enabled:
+
+            print(
+                f"obs_p: {l_obs_p.item():.3e} | ",
+                end="", 
+            )
+
+    else:
+         raise ValueError(
+              f"Unknown run.problem: {pinn.problem}"
+         )
+
+    print("")

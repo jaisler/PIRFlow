@@ -25,6 +25,11 @@ class SamplingData:
         self.collpts = collpts
         self.params = params
         self.dims = params['geometry']['dimension']
+        # For a collocation object, it is always False
+        self.boundary_only = (
+            not self.collpts
+            and params["run"].get("problem", "forward").lower() == "inverse"
+        )
 
         self.pts_in = np.empty((0, 3), dtype=float)
         self.pts_bc = np.empty((0, 3), dtype=float)
@@ -44,12 +49,18 @@ class SamplingData:
             if self.collpts:
                 print("Sampling collocation points ...")
             else:
-                print("Sampling data points...")
+                if self.boundary_only:
+                    print("Sampling boundary condition points...") 
+                else:
+                    print("Sampling data points...")
         else:
             if self.collpts:
                 print("Loading collocation points ...")
             else:
-                print("Loading data points ...")
+                if self.boundary_only:
+                    print("Loading boudanry condition points ...")
+                else:
+                    print("Loading data points ...")
 
     def sample(self):
         """Sample points and interpolate the configured CFD flowfield.
@@ -66,14 +77,16 @@ class SamplingData:
         self.pts_grad = np.empty((0, 3), dtype=float)
         self.pts = np.empty((0, 3), dtype=float)
 
-        if self.collpts:
-            point_cfg = self.params['sampling']['collocation_points']
-        else:
-            point_cfg = self.params['sampling']['data_points']
+        npinner, npgrad, boundaries = self._get_sampling_plan()
 
-        npinner = point_cfg['interior']
-        npgrad = point_cfg['gradient']
-        npbc = point_cfg['boundary']
+        # No boundary data are requested for this inverse problem.
+        if self.boundary_only and not boundaries:
+            self.X = self.pts.copy()
+            self.U = np.empty((0, 3), dtype=float)
+            self.rho = np.empty((0,), dtype=float)
+            self.p = np.empty((0,), dtype=float)
+            self.mut = np.empty((0, 1), dtype=float)
+            return
 
         # Load your solution
         # .vtk, .pvtu, .vtm, ...
@@ -88,43 +101,68 @@ class SamplingData:
         # Get base sampler function 
         base_sampler = self.get_base_sampler(self.params['sampling']['method'])
 
+        # Inner points
         if npinner > 0:
-            # Call chosen sampler 
-            pts_in = base_sampler(npinner, xmin, xmax, ymin, ymax)  
-            # The flow is 2D but VTK expects 3D points, lift to z=zmin (or 0)
+            pts_in = base_sampler(npinner, xmin, xmax, ymin, ymax)
+
             if self.dims == 2:
-                pts_in = np.column_stack([pts_in, np.full((pts_in.shape[0],), zmin)])
-        else:
-            raise ValueError("Number of sample points must be provided ")
-        self.pts_in = np.vstack([self.pts_in, pts_in])
-        # Apply mask at the inner points
-        sampled = pv.PolyData(self.pts_in).sample(mesh)
-        mask = sampled["vtkValidPointMask"].astype(bool)
-        self.pts_in = self.pts_in[mask]
-        # All points
-        self.pts = np.vstack([self.pts, pts_in])
-        
+                pts_in = np.column_stack(
+                    [pts_in,np.full(pts_in.shape[0], zmin)]
+                )
+
+            self.pts_in = np.vstack([self.pts_in, pts_in])
+
+            # Retain valid interior points for the sampling group.
+            # Interpolate solution at all points
+            sampled = pv.PolyData(self.pts_in).sample(mesh)
+            # Interpolates point/cell data onto pts
+            mask = sampled["vtkValidPointMask"].astype(bool)
+            # Apply the mask in all points
+            self.pts_in = self.pts_in[mask]
+
+            # The final interpolation below applies its validity mask again.
+            self.pts = np.vstack([self.pts, pts_in])
+
+        elif not self.boundary_only:
+            raise ValueError("Number of sample points must be provided.")        
+
+        # Gradient points
         # Add extra points in regions detected by a sensor
         # Extra points based on gradient |grad(rho)|
         if npgrad > 0:
             grad_cfg = self.params["sampling"]["gradient_sampling"]
+
             pts_grad = self.sample_based_on_grad(
-                mesh=mesh, npoin_grad=npgrad,
-                xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax, zmin=zmin, zmax=zmax,
-                base_sampler=base_sampler,
+                mesh, 
+                npgrad,
+                xmin, xmax, ymin, ymax, zmin, zmax,
+                base_sampler,
                 var_name=grad_cfg.get("variable", "Density"),
                 pool_factor=grad_cfg.get("pool_factor", 8),
-                alpha=grad_cfg.get("alpha", 1.5))
+                alpha=grad_cfg.get("alpha", 1.5)
+            )
+
             self.pts_grad = np.vstack([self.pts_grad, pts_grad])
+            # The final interpolation below applies its validity mask again.
             self.pts = np.vstack([self.pts, pts_grad])
 
-        # Points on the boundary condition
-        bc_names = self.params['sampling']['boundaries']['names']
-        bc_poin = npbc #params['sampling']['nspoin_bc']
-        for phys_name, n_bc in zip(bc_names, bc_poin):
+        # Boundary condition points
+        for phys_name, n_bc in boundaries:
             if n_bc > 0:
-                pts_bc = self.sample_boundary_condition(phys_name, n_bc)                
-                pts_bc = self.nudge_bc_points(pts_bc, phys_name, xmin, xmax, ymin, ymax)
+                pts_bc = self.sample_boundary_condition(
+                    phys_name,
+                    n_bc,
+                )
+
+                pts_bc = self.nudge_bc_points(
+                    pts_bc,
+                    phys_name,
+                    xmin,
+                    xmax,
+                    ymin,
+                    ymax,
+                )
+
                 self.pts_bc = np.vstack([self.pts_bc, pts_bc])
                 self.pts = np.vstack([self.pts, pts_bc])
 
@@ -134,6 +172,13 @@ class SamplingData:
         sampled = point_cloud.sample(mesh)  
         # Apply the mask in all points
         mask = sampled["vtkValidPointMask"].astype(bool)
+
+        if self.boundary_only and not np.all(mask):
+            raise ValueError(
+                f"{np.count_nonzero(~mask)} selected boundary points "
+                "could not be interpolated on the CFD mesh. "
+                "Check the geometry, flow mesh, and boundary nudging."
+            )
 
         # sampled.point_data now contains interpolated arrays at your points
         #print(sampled.point_data.keys())
@@ -163,6 +208,88 @@ class SamplingData:
             elif (self.params['run']['equation'] == 'euler'):
                 # Otherwise return zero
                 self.mut = np.zeros((self.X.shape[0], 1), dtype=float)
+
+    def _get_sampling_plan(self):
+        """Return interior counts, gradient counts, and boundary/count pairs."""
+
+        sampling_config = self.params["sampling"]
+
+        if self.collpts:
+            point_config = sampling_config["collocation_points"]
+        else:
+            point_config = sampling_config["data_points"]
+
+        boundary_names = sampling_config["boundaries"]["names"]
+        boundary_counts = point_config["boundary"]
+
+        if len(boundary_names) != len(boundary_counts):
+            raise ValueError(
+                "sampling.boundaries.names and sampling.data_points.boundary "
+                "must have the same length."
+            )
+
+        if len(set(boundary_names)) != len(boundary_names):
+            raise ValueError("Configured boundary names must be unique.")
+
+        # Preserve the existing plan for forward data and collocation points.
+        if not self.boundary_only:
+            return (
+                point_config["interior"],
+                point_config["gradient"],
+                list(zip(boundary_names, boundary_counts)),
+            )
+
+        # Inverse data contain only enabled, selected boundaries.
+        boundary_config = self.params.get(
+            "identification", {}).get(
+            "boundary_conditions", {}
+        )
+
+        if not boundary_config.get("enabled", False):
+            return 0, 0, []
+
+        selected_names = boundary_config.get("names", [])
+
+        if not isinstance(selected_names, list) or not selected_names:
+            raise ValueError(
+                "identification.boundary_conditions.names must be "
+                "a non-empty list when boundary conditions are enabled."
+            )
+
+        if not all(isinstance(name, str) for name in selected_names):
+            raise ValueError("Selected boundary names for identification " \
+                             "must be strings.")
+
+        if len(set(selected_names)) != len(selected_names):
+            raise ValueError("Selected boundary names for identification " \
+                             "must not be repeated.")
+
+        counts_by_name = dict(zip(boundary_names, boundary_counts))
+
+        selected_boundaries = []
+
+        for name in selected_names:
+            if name not in counts_by_name:
+                raise ValueError(
+                    f"Boundary '{name}' is not listed in "
+                    "sampling.boundary.names."
+                )
+
+            count = counts_by_name[name]
+
+            if (isinstance(count, bool)
+                or not isinstance(count, int)
+                or count <= 0
+            ):
+                raise ValueError(
+                    f"Selected boundary '{name}' requires a positive "
+                    "integer point count."
+                )
+
+            selected_boundaries.append((name, int(count)))
+
+        return 0, 0, selected_boundaries
+
 
     def get_base_sampler(self, sampling_type: str):
         """Return the point-sampling function selected by name.
@@ -477,9 +604,9 @@ class SamplingData:
         path_data = Path(self.params['paths']['samples'])
         path_data.mkdir(parents=True, exist_ok=True)
 
-        if self.collpts:
-            filename = path_data / "collocation_points.npz"
+        filename = self._get_sample_path()
 
+        if self.collpts:
             np.savez_compressed(
                 filename,
                 X=self.X,
@@ -490,7 +617,21 @@ class SamplingData:
             )
 
         else:
-            filename = path_data / "data_points.npz"
+            boundary_info = {}
+
+            if self.boundary_only:
+                _, _, boundaries = self._get_sampling_plan()
+
+                boundary_info = {
+                    "boundary_names": np.asarray(
+                        [name for name, _ in boundaries],
+                        dtype=str,
+                    ),
+                    "boundary_counts": np.asarray(
+                        [count for _, count in boundaries],
+                        dtype=int,
+                    ),
+                }
 
             np.savez_compressed(
                 filename,
@@ -503,6 +644,7 @@ class SamplingData:
                 pts_bc=self.pts_bc,
                 pts_grad=self.pts_grad,
                 collpts=np.array(False),
+                **boundary_info, # dictionary unpacking: ** 
             )
 
         print("---------------------------------------")
@@ -517,31 +659,32 @@ class SamplingData:
             Coordinates, point groups, and optional flow variables.
         """
 
-        path_data = Path(self.params['paths']['samples'])
+        filename = self._get_sample_path()
 
-        # Note that, the attribute self.collpts has the information if it is
-        # data or collocation points
-        if not self.collpts:
-            filename = path_data / "data_points.npz"
-
-            if not filename.is_file():
-                raise FileNotFoundError(
-                    f"Sample data file was not found:\n  {filename}\n\n"
-                    "Sampling is currently disabled. Enable the sampling routine in "
-                    "'configuration.yaml' and run the program once to generate the file."
-                )
-
-        else:
-            filename = path_data / "collocation_points.npz"
-
-            if not filename.is_file():
-                raise FileNotFoundError(
-                    f"Sample collocation data file was not found:\n  {filename}\n\n"
-                    "Sampling is currently disabled. Enable the sampling routine in "
-                    "'configuration.yaml' and run the program once to generate the file."
-                )
+        if not filename.is_file():
+            raise FileNotFoundError(
+                f"Sample file was not found:\n  {filename}\n"
+                "Enable run.routines.sampling to generate it."
+            )
 
         data = np.load(filename)
+
+        if self.boundary_only:
+            _, _, boundaries = self._get_sampling_plan()
+
+            expected_names = [name for name, _ in boundaries]
+            expected_counts = [count for _, count in boundaries]
+
+            if (
+                "boundary_names" not in data
+                or "boundary_counts" not in data
+                or data["boundary_names"].tolist() != expected_names
+                or data["boundary_counts"].tolist() != expected_counts
+            ):
+                raise ValueError(
+                    "Saved boundary names/counts differ from the configuration. "
+                    "Enable run.routines.sampling to regenerate the samples."
+                )
 
         X = data["X"]
         pts_in = data["pts_in"]
@@ -560,6 +703,18 @@ class SamplingData:
             mut = None
 
         return X, pts_in, pts_bc, pts_grad, U, rho, p, mut
+
+    def _get_sample_path(self):
+        """Return the sample-file path for this sampling object."""
+
+        if self.collpts:
+            filename = "collocation_points.npz"
+        elif self.boundary_only:
+            filename = "boundary_points.npz"
+        else:
+            filename = "data_points.npz"
+
+        return Path(self.params["paths"]["samples"]) / filename
 
     def get_boundary_marker(self):
         """Return the boundary-marker array, when available.
