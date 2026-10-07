@@ -1,43 +1,58 @@
 # PIRFlow
 
+PIRFlow (Physics-Informed Reconstruction of Flow fields) is a PyTorch 
+framework for physics-informed reconstruction of compressible flow fields 
+from sparse data.
+
 ## Overview
 
-This repository provides a PyTorch framework for reconstructing compressible 
-flow fields from sparse, heterogeneous observations. It combines 
-physics-informed learning with Graph Neural Networks (GNNs), 
-embedding governing equations, including the Euler and Reynolds-averaged 
-Navier–Stokes (RANS) equations, directly into the learning process on 
-irregular computational meshes.
+PIRFlow combines neural networks with the steady compressible Euler or
+Reynolds-averaged Navier–Stokes (RANS) equations to reconstruct density,
+velocity, pressure, and, for RANS configurations, turbulent viscosity.
 
-The framework targets inverse problems in which complete flow fields—such as 
-density, velocity, pressure, and turbulence quantities—are inferred from 
-limited experimental or numerical data. It is designed to recover both global 
-and local flow structures, including shock waves, boundary layers, shear 
-layers, and recirculation regions, while remaining adaptable to a broad 
-range of compressible-flow configurations.
+The framework supports two workflows:
+
+- **Forward reconstruction:** learn flow fields from sampled CFD data using
+  multilayer perceptrons (MLPs) or graph neural networks (GNNs), with optional
+  physics-informed constraints.
+- **Inverse reconstruction:** infer flow fields from heterogeneous
+  observations—including synthetic Schlieren data, velocity profiles, and
+  pressure taps using governing equation residuals and optional
+  boundary condition data. This workflow currently supports **MLPs only**.
+
+PIRFlow targets compressible flows featuring shocks, boundary layers,
+shear layers, and recirculation regions. Its modular structure supports
+experimentation with network architectures, observation types, sampling
+strategies, and loss formulations.
 
 ## Features
 
-- PyTorch framework supporting MLP and GNN architectures
-- Steady compressible Euler and RANS formulations
-- Supervised and physics-informed training with sparse CFD data and 
-collocation points
-- Non-dimensionalization, input normalization, and positivity 
-constraints
-- Adam and L-BFGS optimization with validation and test metrics
-- Flexible sampling utilities for flow data and computational 
-geometries
-- Full-mesh prediction, VTK export, and PyVista visualization of 
-predicted fields and errors
-- Modular design for networks, physical residuals, losses, sampling, 
-evaluation, and post-processing
+- **Network architectures:** MLPs and GNNs for reconstruction on computational
+  flow domains.
+- **Governing equations:** steady compressible Euler and RANS formulations
+  with effective viscosity.
+- **Training:** supervised and physics-informed learning, with
+  governing equation residuals evaluated at collocation points.
+- **Inverse observations:** density gradient, velocity, and pressure losses
+  with configurable weights and optional boundary constraints.
+- **Synthetic Schlieren:** configurable image resolution, supersampling,
+  blur, noise, and uniform or signal-based sampling.
+- **Data preparation:** sampling utilities for CFD data, observations,
+  collocation points, and selected boundaries.
+- **Scaling and constraints:** nondimensionalization, input normalization,
+  and positivity constraints for density, pressure, and turbulent viscosity.
+- **Optimization:** Adam and L-BFGS, with CFD and observation validation
+  and test metrics.
+- **Post-processing:** full-mesh prediction, nondimensional mesh-based
+  metrics, VTK export, and PyVista visualization of reconstructed fields
+  and errors.
+- **Modular implementation:** separate components for networks, physical
+  residuals, losses, sampling, evaluation, and post-processing.
 
 ## Documentation
 
- Code contribution standards are documented in 
- [CONTRIBUTING.md](CONTRIBUTING.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for code contribution standards.
 
 ## License
 
-This project is licensed under the MIT License. See the `LICENSE` file for 
-details.
+PIRFlow is released under the [MIT License](LICENSE).
