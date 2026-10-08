@@ -2,9 +2,8 @@
 import torch
 from src.utils import print_metrics_table
 
-
-def evaluate_test_cfd_dataset(model, data):
-    """Evaluate a model on the prepared test subset.
+def evaluate_forward_test_dataset(model, cfd):
+    """Evaluate a model on the prepared test dataset.
     
     Parameters
     ----------
@@ -18,6 +17,9 @@ def evaluate_test_cfd_dataset(model, data):
     None
         Metrics are printed to standard output.
     """
+
+    # CFD test dataset
+    data = cfd["test"]
 
     test_data_available = (
         data["xtest"] is not None 
@@ -44,8 +46,8 @@ def evaluate_test_cfd_dataset(model, data):
 
     return test_metrics
 
-def evaluate_test_observation_dataset(model, observation):
-    """Evaluate the available test observation subset.
+def evaluate_inverse_test_dataset(model, observation):
+    """Evaluate the available inverse test dataset.
     
     Parameters
     ----------
@@ -74,7 +76,7 @@ def evaluate_test_observation_dataset(model, observation):
         return {}
 
     with torch.enable_grad():
-        test_metrics = model._evaluate_observation(test_observation)
+        test_metrics = model._evaluate_inverse_problem(test_observation)
 
     # Print metrics of the test dataset
     print_metrics_table(test_metrics, title="Test observation dataset metrics")
