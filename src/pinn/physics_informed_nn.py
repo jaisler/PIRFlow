@@ -1219,9 +1219,9 @@ class PhysicsInformedNN(nn.Module):
  
         return xstar, ystar
 
-    def _evaluate_cfd(self, xdata, ydata, rhodata,
+    def _evaluate_forward(self, xdata, ydata, rhodata,
                      udata, vdata, pdata, mutdata=None):
-        """Compute error metrics on held-out cfd data.
+        """Compute error metrics on held-out forward (cfd) test data.
             
         Parameters
         ----------
@@ -1293,8 +1293,8 @@ class PhysicsInformedNN(nn.Module):
 
         return metrics
 
-    def _evaluate_observation(self, test_observation):
-        """Compute error metrics on held-out observation data."""
+    def _evaluate_inverse(self, test_observation, test_cfd):
+        """Compute error metrics on held-out inverse test data."""
 
         # Switch to evaluation mode, affecting layers such as dropout 
         # and BatchNorm.    
