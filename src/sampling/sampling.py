@@ -41,6 +41,8 @@ class SamplingData:
         self.rho = None
         self.p = None
         self.mut = None
+        self.observed = None
+        self.boundary_names = None
 
         print("---------------------------------------")
         print("Sample data initialized")
@@ -78,6 +80,8 @@ class SamplingData:
         self.pts = np.empty((0, 3), dtype=float)
 
         npinner, npgrad, boundaries = self._get_sampling_plan()
+        if self.boundary_only:
+            self._prepare_boundary_observations(boundaries)
 
         # No boundary data are requested for this inverse problem.
         if self.boundary_only and not boundaries:
@@ -174,6 +178,12 @@ class SamplingData:
         mask = sampled["vtkValidPointMask"].astype(bool)
 
         if self.boundary_only and not np.all(mask):
+            # The cell locator can miss points near narrow cell edges.
+            # Retry with the mesh's own cell search at the same coordinates.
+            sampled = point_cloud.sample(mesh, locator=None)
+            mask = sampled["vtkValidPointMask"].astype(bool)
+
+        if self.boundary_only and not np.all(mask):
             raise ValueError(
                 f"{np.count_nonzero(~mask)} selected boundary points "
                 "could not be interpolated on the CFD mesh. "
@@ -189,11 +199,34 @@ class SamplingData:
         self.X = sampled.points[mask]        # (N,3) or (N,2)
 
         if self.collpts:
+            # Note that, the data is not stored for the collocation points
+            # since the predicted flow variables are provided to the 
+            # governing equations.
             self.U = sampled.points[mask] * 0.0  
             self.rho = sampled.points[mask] * 0.0  
             self.p = sampled.points[mask] * 0.0
             self.mut = sampled.points[mask] * 0.0
-            
+
+        # The names Density, Velocity, Pressure and Eddy_Viscosity
+        # come from the SU2 it should be given by the user.
+        # It cannot be define directly from here.
+
+        # 1. Understand the _sample_observed_field function
+        # 2. Modify if necessary, adding information on the config file
+
+        elif self.boundary_only:
+            self.U = np.column_stack([
+                self._sample_observed_field(sampled, "u", "Velocity", 0),
+                self._sample_observed_field(sampled, "v", "Velocity", 1),
+            ])
+            self.rho = self._sample_observed_field(
+                sampled, "rho", "Density"
+            )
+            self.p = self._sample_observed_field(sampled, "p", "Pressure")
+            self.mut = self._sample_observed_field(
+                sampled, "mut", "Eddy_Viscosity"
+            )
+
         else:
             self.U = sampled["Velocity"][mask]   # (N,3) or (N,2) if vector
             self.rho = sampled["Density"][mask]  # (N,) 
@@ -289,6 +322,109 @@ class SamplingData:
             selected_boundaries.append((name, int(count)))
 
         return 0, 0, selected_boundaries
+
+    def _prepare_boundary_observations(self, boundaries):
+        """Mark the observed fields at each selected boundary point.
+
+        Missing ``fields`` configuration preserves complete CFD targets.
+        Explicit field lists must cover every selected boundary. Masks have
+        shape ``(N,)`` and follow the sampling order of the boundary points.
+        """
+
+        # Inverse boundary condition config
+        config = self.params["identification"]["boundary_conditions"]
+        # Prescribed fields
+        fields = config.get("fields")
+
+        allowed = ["rho", "u", "v", "p"]
+        if self.params["run"]["equation"] == "rans":
+            allowed.append("mut")
+
+        # Check if fields is None, if yes fields receives all the 
+        # the fields
+        names = [name for name, _ in boundaries]
+        if fields is None:
+            fields = {name: allowed for name in names}
+
+        # Check if fields is a dict or has the same names 
+        elif not isinstance(fields, dict) or set(fields) != set(names):
+            raise ValueError(
+                "boundary_conditions.fields must define exactly the "
+                "selected boundary names."
+            )
+
+        # Check the selected fields
+        for name in names:
+            selected = fields[name]
+            # 
+            if (
+                not isinstance(selected, list)
+                or not selected
+                or not all(isinstance(field, str) for field in selected)
+                or len(set(selected)) != len(selected)
+                or not set(selected).issubset(allowed)
+            ):
+                raise ValueError(
+                    f"Boundary '{name}' requires a non-empty list of "
+                    f"unique fields from {allowed}."
+                )
+
+
+        # Add boundary name for each point        
+        self.boundary_names = np.asarray([
+            name for name, count in boundaries for _ in range(count)
+        ], dtype=str)
+
+        # Add true or false for each variable for the corresponding
+        # boundary condition
+        self.observed = {
+            field: np.asarray([
+                field in fields[name]
+                for name, count in boundaries
+                for _ in range(count)
+            ], dtype=bool)
+            for field in ("rho", "u", "v", "p", "mut")
+        }
+
+    def _sample_observed_field(self, sampled, field, array, component=None):
+        """Extract only observed values; unobserved entries remain NaN."""
+
+        # Retrive the if the variable was provided for each boundary and field
+        # {"rho", [True, False, ...]} 
+        observed = self.observed[field]
+        # Create an array with the same shape, filled with Nan 
+        values = np.full(observed.shape, np.nan, dtype=float)
+        
+        if not np.any(observed):
+            return values
+        
+        # Extract the unique values of the boundary conditions 
+        names = np.unique(self.boundary_names[observed]).tolist()
+
+        if array not in sampled.point_data:
+            raise ValueError(
+                f"Boundaries {names} request '{field}', but CFD array "
+                f"'{array}' is missing."
+            )
+
+        sampled_values = np.asarray(sampled[array])
+        if component is not None:
+            if (
+                sampled_values.ndim != 2
+                or sampled_values.shape[1] <= component
+            ):
+                raise ValueError(
+                    f"CFD array '{array}' has no component '{field}'."
+                )
+            sampled_values = sampled_values[:, component]
+
+        values[observed] = sampled_values.reshape(-1)[observed]
+        if not np.all(np.isfinite(values[observed])):
+            raise ValueError(
+                f"Boundaries {names} have non-finite '{field}' observations."
+            )
+
+        return values
 
 
     def get_base_sampler(self, sampling_type: str):
@@ -631,6 +767,10 @@ class SamplingData:
                         [count for _, count in boundaries],
                         dtype=int,
                     ),
+                    **{
+                        f"observed_{field}": observed
+                        for field, observed in self.observed.items()
+                    },
                 }
 
             np.savez_compressed(
@@ -671,6 +811,7 @@ class SamplingData:
 
         if self.boundary_only:
             _, _, boundaries = self._get_sampling_plan()
+            self._prepare_boundary_observations(boundaries)
 
             expected_names = [name for name, _ in boundaries]
             expected_counts = [count for _, count in boundaries]
@@ -682,9 +823,19 @@ class SamplingData:
                 or data["boundary_counts"].tolist() != expected_counts
             ):
                 raise ValueError(
-                    "Saved boundary names/counts differ from the configuration. "
+                    "Saved boundary names/counts differ from the "
+                    "configuration. "
                     "Enable run.routines.sampling to regenerate the samples."
                 )
+
+            for field, observed in self.observed.items():
+                key = f"observed_{field}"
+                if key in data and not np.array_equal(data[key], observed):
+                    raise ValueError(
+                        "Saved boundary fields differ from the "
+                        "configuration. Enable run.routines.sampling "
+                        "to regenerate the samples."
+                    )
 
         X = data["X"]
         pts_in = data["pts_in"]
@@ -696,6 +847,25 @@ class SamplingData:
             rho = data["rho"]
             p = data["p"]
             mut = data["mut"]
+
+            if self.boundary_only:
+                if len(X) != len(self.boundary_names):
+                    raise ValueError(
+                        "Saved boundary coordinates do not match the "
+                        "configured point counts. Regenerate the samples."
+                    )
+                # Legacy caches contain all fields. Apply current selection.
+                values = {"rho": rho, "u": U[:, 0], "v": U[:, 1],
+                          "p": p, "mut": mut}
+                for field, target in values.items():
+                    selected = self.observed[field]
+                    target = target.reshape(-1)
+                    if not np.all(np.isfinite(target[selected])):
+                        raise ValueError(
+                            f"Saved '{field}' observations are non-finite. "
+                            "Regenerate the boundary samples."
+                        )
+                    target[~selected] = np.nan
         else:
             U = None
             rho = None
