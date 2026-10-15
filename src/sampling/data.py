@@ -13,6 +13,8 @@ def get_data_points(params):
     -------
     dict
         Coordinates, flow variables, and sampling groups.
+        Inverse boundary data also contain field availability masks under
+        ``observed`` and per-point names under ``boundary_names``.
     """
 
     # Validate the selected problem mode.
@@ -82,6 +84,12 @@ def get_data_points(params):
         "pts_bc": pts_bc,
         "pts_grad": pts_grad,
     }
+
+    if data_handler.boundary_only:
+        # Array ["inlet", "inlet", "inlet", "outlet", ...]
+        data_points["boundary_names"] = data_handler.boundary_names
+        # {"rho": [True, True, True, False, ...]}
+        data_points["observed"] = data_handler.observed
 
     return data_points
 
