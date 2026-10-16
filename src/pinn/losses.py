@@ -26,7 +26,8 @@ def _zero_loss(pinn):
     return torch.tensor(0.0, dtype=torch.float32, device=pinn.device)
 
 def _cfd_loss_terms(pinn, x, y, rho_true, u_true, v_true, p_true,
-                   mut_true=None, use_dropout=False, role="data"):
+                   mut_true=None, use_dropout=False, role="data",
+                   observed=None):
     """Compute mean-squared errors for CFD flow fields.
 
     Parameters
@@ -38,11 +39,14 @@ def _cfd_loss_terms(pinn, x, y, rho_true, u_true, v_true, p_true,
     rho_true, u_true, v_true, p_true : torch.Tensor
         Target nondimensional density, velocity components, and pressure.
     mut_true : torch.Tensor or None, optional
-        Target scaled turbulent viscosity, required for RANS.
+        Target scaled turbulent viscosity for RANS.
     use_dropout : bool, optional
         Enable data dropout. Defaults to False.
     role : str or None, optional
         GNN graph role. Defaults to ``"data"``; ignored by the MLP.
+    observed : dict or None, optional
+        Boolean tensors selecting known targets for each field. Without
+        masks, all targets are used. Empty selections contribute zero.
 
     Returns
     -------
@@ -61,21 +65,34 @@ def _cfd_loss_terms(pinn, x, y, rho_true, u_true, v_true, p_true,
         rho_pred, u_pred, v_pred, p_pred, mut_pred \
             = pinn.net_fields(x, y, use_dropout, role=role)
 
-        if mut_true is None:
-            raise ValueError("For RANS, mut_t must be provided in loss_fn.")
-        # Loss of the turbulent viscosity         
-        l_mut = torch.mean((mut_true - mut_pred) ** 2)
+        l_mut = _cfd_field_loss(
+            pinn, mut_pred, mut_true, "mut", observed
+        )
         
     else:
         raise ValueError(f"Unknown equation type: {pinn.eq}")
 
     # CFD losses terms
-    l_rho = torch.mean((rho_true - rho_pred) ** 2)
-    l_u   = torch.mean((u_true   - u_pred)   ** 2)
-    l_v   = torch.mean((v_true   - v_pred)   ** 2)
-    l_p   = torch.mean((p_true   - p_pred)   ** 2)
+    l_rho = _cfd_field_loss(pinn, rho_pred, rho_true, "rho", observed)
+    l_u = _cfd_field_loss(pinn, u_pred, u_true, "u", observed)
+    l_v = _cfd_field_loss(pinn, v_pred, v_true, "v", observed)
+    l_p = _cfd_field_loss(pinn, p_pred, p_true, "p", observed)
 
     return l_rho, l_u, l_v, l_p, l_mut
+
+def _cfd_field_loss(pinn, prediction, target, field, observed):
+    """Average squared errors over measured entries of one field only."""
+
+    # Check if field was prescribed
+    if observed is not None:
+        selected = observed[field]
+        if not torch.any(selected):
+            return _zero_loss(pinn)
+
+        prediction = prediction[selected]
+        target = target[selected]
+
+    return torch.mean((prediction - target) ** 2)
 
 def _observations_loss_terms(pinn, observations, use_dropout=False, 
                             role="data"):
@@ -306,7 +323,8 @@ def loss_fn(pinn, return_terms=False):
         l_rho, l_u, l_v, l_p, l_mut = \
             _cfd_loss_terms(pinn, pinn.xtrain, pinn.ytrain, pinn.rhotrain, 
                             pinn.utrain, pinn.vtrain, pinn.ptrain, 
-                            pinn.muttrain, use_data_dropout, role="data")
+                            pinn.muttrain, use_data_dropout, role="data",
+                            observed=pinn.observed_train)
     else:
         # if not forward or not bc from inverse
         l_rho, l_u, l_v, l_p, l_mut = (
@@ -404,7 +422,8 @@ def validation_loss_fn(pinn):
                         pinn.pval,
                         pinn.mutval,
                         use_dropout=False,
-                        role="validation"
+                        role="validation",
+                        observed=pinn.observed_val,
                     )
                 )
 
