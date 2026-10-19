@@ -61,20 +61,20 @@ def print_loss(pinn, it, loss_val, terms):
     elif pinn.problem == "inverse":
 
         if pinn.use_inv_boundaries:
+            boundary_terms = {
+                "rho": l_rho, "u": l_u, "v": l_v, "p": l_p,
+            }
+            if pinn.eq == "rans":
+                boundary_terms["mut"] = l_mut
 
-            print(
-                f"bc_rho: {l_rho.item():.3e} | "
-                f"bc_u: {l_u.item():.3e} | "
-                f"bc_v: {l_v.item():.3e} | "
-                f"bc_p: {l_p.item():.3e} | ",
-                end="", 
-            )
-
-            if pinn.eq == 'rans':
-
+            for field, term in boundary_terms.items():
+                if (
+                    pinn.observed_train is not None
+                    and not pinn.observed_train[field].any().item()
+                ):
+                    continue
                 print(
-                    f"bc_mut: {l_mut.item():.3e} | ",
-                    end="", 
+                    f"bc_{field}: {term.item():.3e} | ", end="",
                 )
 
         if pinn.schlieren_enabled:

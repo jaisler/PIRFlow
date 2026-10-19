@@ -35,7 +35,7 @@ def evaluate_forward_test_dataset(model, cfd):
               "train/validation/test split.")
         return
 
-    test_metrics = model._evaluate_cfd(
+    test_metrics = model.evaluate_forward(
         data["xtest"], data["ytest"], data["rhotest"], 
         data["utest"], data["vtest"], data["ptest"], 
         data["muttest"]
@@ -46,7 +46,7 @@ def evaluate_forward_test_dataset(model, cfd):
 
     return test_metrics
 
-def evaluate_inverse_test_dataset(model, observation):
+def evaluate_inverse_test_dataset(model, observation, cfd=None):
     """Evaluate the available inverse test dataset.
     
     Parameters
@@ -55,12 +55,14 @@ def evaluate_inverse_test_dataset(model, observation):
         Model to evaluate.
     observation : dict or None
         Complete observation dataset mapping, organized by modality.
+    cfd : dict or None, optional
+        Prepared boundary data with field masks and boundary names.
 
     Returns
     -------
     dict
-        Metrics for the available test modalities, or an empty dictionary
-        when no test observations are available.
+        Metrics for available modalities. Boundary metrics are grouped by
+        boundary name under ``"boundaries"`` and contain observed fields.
     """
 
     # Select the test split and prepare nondimensional tensors.
@@ -69,16 +71,53 @@ def evaluate_inverse_test_dataset(model, observation):
         subset="test",
     )
 
+    test_metrics = {}
     if not test_observation:
         print("---------------------------------------")
         print("Skipping test evaluation for observation data.")
         print("No test observation data were created.")
-        return {}
+    else:
+        with torch.enable_grad():
+            test_metrics = model.evaluate_inverse(test_observation)
+        print_metrics_table(
+            test_metrics, title="Test observation dataset metrics"
+        )
 
-    with torch.enable_grad():
-        test_metrics = model._evaluate_inverse_problem(test_observation)
-
-    # Print metrics of the test dataset
-    print_metrics_table(test_metrics, title="Test observation dataset metrics")
+    if cfd is not None:
+        boundary_metrics = _evaluate_boundary_test_dataset(model, cfd["test"])
+        if boundary_metrics:
+            test_metrics["boundaries"] = boundary_metrics
 
     return test_metrics
+
+def _evaluate_boundary_test_dataset(model, data):
+    """Evaluate each boundary using only its held-out observed true values."""
+
+    metrics = {}
+
+    if data["xtest"] is None or data["xtest"].shape[0] == 0:
+        return {}
+
+    # Corresponding boundary names for each point
+    names = data["boundary_names"]
+
+    # Loop over boundary conditions provided
+    for name in dict.fromkeys(names):
+        selected = names == name
+        observed = {
+            field: mask[selected]
+            for field, mask in data["observed"].items()
+        }
+        
+        metrics[name] = model.evaluate_forward(
+            data["xtest"][selected], data["ytest"][selected],
+            data["rhotest"][selected], data["utest"][selected],
+            data["vtest"][selected], data["ptest"][selected],
+            data["muttest"][selected], observed=observed,
+        )
+
+        print_metrics_table(
+            metrics[name], title=f"Test boundary metrics: {name}"
+        )
+
+    return metrics

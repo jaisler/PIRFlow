@@ -135,7 +135,9 @@ def run() -> None:
 
     elif problem == "inverse":
         # Evaluate held out inverse test dataset
-        evaluate_inverse_test_dataset(model, observation_datasets)
+        evaluate_inverse_test_dataset(
+            model, observation_datasets, cfd_datasets
+        )
 
     # Postprocess flowfield
     if params["run"]["routines"].get("postprocessing", False):
