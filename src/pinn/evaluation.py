@@ -3,19 +3,19 @@ import torch
 from src.utils import print_metrics_table
 
 def evaluate_forward_test_dataset(model, cfd):
-    """Evaluate a model on the prepared test dataset.
-    
+    """Evaluate a model on the CFD test dataset.
+
     Parameters
     ----------
     model : PhysicsInformedNN
         Model to evaluate.
-    data : dict
-        test prepared dataset mapping.
+    cfd : dict
+        Prepared CFD datasets containing the test split.
 
     Returns
     -------
-    None
-        Metrics are printed to standard output.
+    dict or None
+        Test metrics, or None if no test data are available.
     """
 
     # CFD test dataset
@@ -47,22 +47,21 @@ def evaluate_forward_test_dataset(model, cfd):
     return test_metrics
 
 def evaluate_inverse_test_dataset(model, observation, cfd=None):
-    """Evaluate the available inverse test dataset.
-    
+    """Evaluate a model on observation and optional boundary test data.
+
     Parameters
     ----------
     model : PhysicsInformedNN
         Model to evaluate.
     observation : dict or None
-        Complete observation dataset mapping, organized by modality.
+        Observation datasets grouped by modality.
     cfd : dict or None, optional
-        Prepared boundary data with field masks and boundary names.
+        Prepared boundary datasets containing the test split.
 
     Returns
     -------
     dict
-        Metrics for available modalities. Boundary metrics are grouped by
-        boundary name under ``"boundaries"`` and contain observed fields.
+        Test metrics, with optional boundary metrics under ``"boundaries"``.
     """
 
     # Select the test split and prepare nondimensional tensors.
@@ -91,7 +90,20 @@ def evaluate_inverse_test_dataset(model, observation, cfd=None):
     return test_metrics
 
 def _evaluate_boundary_test_dataset(model, data):
-    """Evaluate each boundary using only its held-out observed true values."""
+    """Evaluate each boundary using its observed test values.
+
+    Parameters
+    ----------
+    model : PhysicsInformedNN
+        Model to evaluate.
+    data : dict
+        Boundary test data with field masks and boundary names.
+
+    Returns
+    -------
+    dict
+        Metrics grouped by boundary name, or an empty dict if no test data exist.
+    """
 
     metrics = {}
 

@@ -15,12 +15,12 @@ def _zero_loss(pinn):
     Parameters
     ----------
     pinn : PhysicsInformedNN
-        Model providing the target device.
+        Model providing the device.
 
     Returns
     -------
     torch.Tensor
-        Scalar float32 zero on ``pinn.device``.
+        Scalar zero on the model's device.
     """
 
     return torch.tensor(0.0, dtype=torch.float32, device=pinn.device)
@@ -33,26 +33,24 @@ def _cfd_loss_terms(pinn, x, y, rho_true, u_true, v_true, p_true,
     Parameters
     ----------
     pinn : PhysicsInformedNN
-        Model used to predict the flow fields.
+        Model predicting the flow fields.
     x, y : torch.Tensor
-        Coordinates at which to compare predictions and targets.
+        Coordinates for the predictions.
     rho_true, u_true, v_true, p_true : torch.Tensor
         Target nondimensional density, velocity components, and pressure.
     mut_true : torch.Tensor or None, optional
         Target scaled turbulent viscosity for RANS.
     use_dropout : bool, optional
-        Enable data dropout. Defaults to False.
+        Whether to enable data dropout.
     role : str or None, optional
-        GNN graph role. Defaults to ``"data"``; ignored by the MLP.
+        GNN graph role; ignored by the MLP.
     observed : dict or None, optional
-        Boolean tensors selecting known targets for each field. Without
-        masks, all targets are used. Empty selections contribute zero.
+        Field masks selecting known targets, or None to use all targets.
 
     Returns
     -------
     tuple of torch.Tensor
-        Scalar losses ``(l_rho, l_u, l_v, l_p, l_mut)``.
-        The viscosity loss is zero for Euler.
+        Losses ``(l_rho, l_u, l_v, l_p, l_mut)``; viscosity is zero for Euler.
     """
 
     if pinn.eq == 'euler': 
@@ -81,7 +79,26 @@ def _cfd_loss_terms(pinn, x, y, rho_true, u_true, v_true, p_true,
     return l_rho, l_u, l_v, l_p, l_mut
 
 def _cfd_field_loss(pinn, prediction, target, field, observed):
-    """Average squared errors over measured entries of one field only."""
+    """Compute the mean-squared error for one observed flow field.
+
+    Parameters
+    ----------
+    pinn : PhysicsInformedNN
+        Model providing the device for zero loss.
+    prediction : torch.Tensor
+        Predicted field values.
+    target : torch.Tensor
+        Target field values.
+    field : str
+        Field name used to select its mask.
+    observed : dict or None
+        Field masks selecting known targets, or None to use all targets.
+
+    Returns
+    -------
+    torch.Tensor
+        Scalar field loss, or zero if the mask selects no targets.
+    """
 
     # Check if field was prescribed
     if observed is not None:
@@ -101,22 +118,20 @@ def _observations_loss_terms(pinn, observations, use_dropout=False,
     Parameters
     ----------
     pinn : PhysicsInformedNN
-        Model providing predictions and the schlieren density gradient 
-        type.
+        Model providing predictions and the schlieren gradient type.
     observations : dict
-        Optional entries: ``schlieren``, ``velocity_u``, ``velocity_v``, 
-        and ``pressure_taps``. Each contains coordinate tensor ``X`` of 
-        shape ``(N, 2)`` and target tensor ``value`` with N values.
+        Observations grouped by modality, each with coordinates ``X``
+        and targets ``value``.
     use_dropout : bool, optional
-        Enable data dropout. Defaults to False.
+        Whether to enable data dropout.
     role : str or None, optional
-        GNN graph role. Defaults to ``"data"``; ignored by the MLP.
+        GNN graph role; ignored by the MLP.
 
     Returns
     -------
     tuple of torch.Tensor
-        Scalar losses ``(l_obs_sch, l_obs_u, l_obs_v, l_obs_p)``.
-        Missing observation entries contribute zero loss.
+        Losses ``(l_obs_sch, l_obs_u, l_obs_v, l_obs_p)``.
+        Missing observations contribute zero.
     """
 
     if "schlieren" in observations:
@@ -230,8 +245,8 @@ def _residual_loss_terms(pinn):
     Returns
     -------
     tuple of torch.Tensor
-        Scalar losses ``(l_f1, l_f2, l_f3, l_f4)`` for mass, x-momentum,
-        y-momentum, and energy. All four are zero for supervised models.
+        Losses ``(l_f1, l_f2, l_f3, l_f4)`` for mass, x-momentum,
+        y-momentum, and energy; all are zero for supervised models.
     """
 
     if pinn.model == 'supervised':
@@ -295,22 +310,20 @@ def loss_fn(pinn, return_terms=False):
     Parameters
     ----------
     pinn : PhysicsInformedNN
-        Model containing training data, collocation points, and loss 
-        weights.
+        Model with training data, collocation points, and loss weights.
     return_terms : bool, optional
-        Include individual loss terms for logging. Defaults to False.
+        Whether to include individual loss terms for logging.
 
     Returns
     -------
     loss : torch.Tensor
-        Total weighted loss: ``data_loss + res_loss``.
+        Total weighted training loss.
     data_loss : torch.Tensor
-        Weighted CFD and observation losses combined.
+        Weighted CFD and observation loss.
     res_loss : torch.Tensor
         Weighted physics residual loss.
     detached_terms : tuple of torch.Tensor, optional
-        Returned as a fourth item only when ``return_terms`` is True.
-        Contains detached, unweighted terms in this order:
+        Detached, unweighted terms included when ``return_terms`` is True:
         ``(l_rho, l_u, l_v, l_p, l_mut, l_obs_sch, l_obs_u, l_obs_v,
         l_obs_p, l_f1, l_f2, l_f3, l_f4)``.
     """
@@ -383,7 +396,7 @@ def loss_fn(pinn, return_terms=False):
     return loss, data_loss, res_loss
 
 def validation_loss_fn(pinn):
-    """Compute validation loss without dropout, restoring the model's mode.
+    """Compute validation loss without dropout.
 
     Parameters
     ----------
@@ -393,8 +406,7 @@ def validation_loss_fn(pinn):
     Returns
     -------
     torch.Tensor or None
-        Detached, weighted CFD and observation loss, or ``None`` when
-        validation is unavailable.
+        Detached, weighted data loss, or None if no validation data exist.
     """
 
     if not pinn.has_validation:

@@ -808,7 +808,13 @@ class PhysicsInformedNN(nn.Module):
 
             for it in range(1, self.n_lbfgs_iter + 1):
                 def closure():
-                    """Recompute the differentiable loss for one L-BFGS step."""
+                    """Recompute the differentiable loss for one L-BFGS step.
+
+                    Returns
+                    -------
+                    torch.Tensor
+                        Total training loss with gradients computed.
+                    """
                     self.optimizer_lbfgs.zero_grad()
                     loss, _, _ = loss_fn(self)
                     loss.backward()
@@ -893,7 +899,18 @@ class PhysicsInformedNN(nn.Module):
             )
 
     def _prepare_cfd_observed(self, cfd_dataset):
-        """Convert optional field observation masks to device tensors."""
+        """Convert field observation masks to tensors on the model's device.
+
+        Parameters
+        ----------
+        cfd_dataset : dict or None
+            CFD dataset with optional field masks under ``"observed"``.
+
+        Returns
+        -------
+        dict or None
+            Boolean tensors grouped by field, or None if no masks exist.
+        """
 
         if cfd_dataset is None or "observed" not in cfd_dataset:
             return None
@@ -1044,6 +1061,19 @@ class PhysicsInformedNN(nn.Module):
         return Xdata, x, y, rho, u, v, p, mut
 
     def _prepare_torch_collocation_data(self, collocation_dataset):
+        """Convert collocation coordinates to nondimensional tensors.
+
+        Parameters
+        ----------
+        collocation_dataset : dict
+            Physical coordinates under ``"xf"`` and ``"yf"``.
+
+        Returns
+        -------
+        tuple
+            Tensors ``(Xf, xf, yf)`` on the model's device, or three None
+            values for supervised models.
+        """
 
         if collocation_dataset is None or self.model == "pinn":
             xf = collocation_dataset["xf"]
@@ -1136,6 +1166,23 @@ class PhysicsInformedNN(nn.Module):
         value_scale,
         name,
     ):
+        """Convert one observation split to nondimensional tensors.
+
+        Parameters
+        ----------
+        split : dict
+            Physical coordinates ``"X"`` and observed values ``"value"``.
+        value_scale : float
+            Positive reference scale for the observed values.
+        name : str
+            Dataset label used in error messages.
+
+        Returns
+        -------
+        dict or None
+            Tensors under ``"X"`` and ``"value"`` on the model's device,
+            or None if the split is empty.
+        """
 
         for scale in (self.Lref, value_scale):
             if not np.isfinite(scale) or scale <= 0:
@@ -1351,7 +1398,19 @@ class PhysicsInformedNN(nn.Module):
         return metrics
 
     def evaluate_inverse(self, test_observation):
-        """Compute error metrics on held-out inverse test data."""
+        """Compute error metrics on held-out inverse test data.
+
+        Parameters
+        ----------
+        test_observation : dict
+            Nondimensional test observations grouped by modality, each
+            containing coordinate tensors ``"X"`` and targets ``"value"``.
+
+        Returns
+        -------
+        dict
+            Metrics for available observations, or an empty dict if none exist.
+        """
 
         # Switch to evaluation mode, affecting layers such as dropout 
         # and BatchNorm.    
