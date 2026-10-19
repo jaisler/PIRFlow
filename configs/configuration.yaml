@@ -70,8 +70,8 @@ identification:
         blur_sigma_pixels: 0.8
 
       noise:
-        type: gaussian            # Options: none, gaussian
-        level: 0.01               # 0.01 means 1% noise
+        type: gaussian             # Options: none, gaussian
+        level: 0.01                # 0.01 means 1% noise
 
       sampling:
         points: 5000
@@ -91,6 +91,12 @@ identification:
       enabled: true
       names:
         - inlet
+        - bottom
+        - top
+      fields:                        # Observed CFD fields at each boundary
+        inlet: [rho, u, v, p]        # Add mut only if known at the inlet
+        bottom: [u, v]
+        top: [u, v]
 
 # Neural network
 # --------------

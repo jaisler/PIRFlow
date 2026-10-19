@@ -197,6 +197,12 @@ class PhysicsInformedNN(nn.Module):
             and boundary_inv
         )
 
+        # Note that self.observed_train and self.observed_val are masks 
+        # Prepare observed data: training
+        self.observed_train = self._prepare_cfd_observed(cfd_training)
+        # Prepare observed data: validation
+        self.observed_val = self._prepare_cfd_observed(cfd_validation)
+
         # CFD training data
         if (
             (self.problem == "forward" or self.use_inv_boundaries)
@@ -281,10 +287,10 @@ class PhysicsInformedNN(nn.Module):
                 subset="validation",
             )
 
-            if not self.obs_train:
+            if not self.obs_train and not self.use_inv_boundaries:
                 raise ValueError(
                     "An inverse problem requires at least one nonempty "
-                    "training observation modality"
+                    "training observation modality or boundary dataset"
                 )
 
             observations_config = params["identification"]["observations"]
@@ -802,7 +808,13 @@ class PhysicsInformedNN(nn.Module):
 
             for it in range(1, self.n_lbfgs_iter + 1):
                 def closure():
-                    """Recompute the differentiable loss for one L-BFGS step."""
+                    """Recompute the differentiable loss for one L-BFGS step.
+
+                    Returns
+                    -------
+                    torch.Tensor
+                        Total training loss with gradients computed.
+                    """
                     self.optimizer_lbfgs.zero_grad()
                     loss, _, _ = loss_fn(self)
                     loss.backward()
@@ -886,6 +898,30 @@ class PhysicsInformedNN(nn.Module):
                 mutd.cpu().numpy()
             )
 
+    def _prepare_cfd_observed(self, cfd_dataset):
+        """Convert field observation masks to tensors on the model's device.
+
+        Parameters
+        ----------
+        cfd_dataset : dict or None
+            CFD dataset with optional field masks under ``"observed"``.
+
+        Returns
+        -------
+        dict or None
+            Boolean tensors grouped by field, or None if no masks exist.
+        """
+
+        if cfd_dataset is None or "observed" not in cfd_dataset:
+            return None
+
+        return {
+            field: torch.tensor(
+                observed, dtype=torch.bool, device=self.device
+            ).reshape(-1, 1)
+            for field, observed in cfd_dataset["observed"].items()
+        }
+
     def _prepare_cfd_split(self, cfd_datasets, suffix, fit_scale=False):
         """Convert one prepared CFD split into nondimensional model tensors.
 
@@ -896,6 +932,7 @@ class PhysicsInformedNN(nn.Module):
             Required keys are ``x``, ``y``, ``rho``, ``u``, ``v``, and ``p``,
             each followed by ``suffix``. The corresponding ``mut`` key is
             required for RANS. If ``None``, no tensors are prepared.
+            Optional ``observed`` masks select measured entries per field.
         suffix : str
             Dataset suffix, such as ``"train"``, ``"val"``, or ``"test"``.
         fit_scale : bool, optional
@@ -925,11 +962,12 @@ class PhysicsInformedNN(nn.Module):
             pdata=cfd_datasets[f"p{suffix}"],
             mutdata=cfd_datasets.get(f"mut{suffix}"),
             fit_scale=fit_scale,
+            observed=cfd_datasets.get("observed"),
         )
 
     def _prepare_torch_cfd_data(self, xdata, ydata, rhodata, udata,
                                       vdata, pdata, mutdata=None, 
-                                      fit_scale=False):
+                                      fit_scale=False, observed=None):
         """Nondimensionalize supervised arrays and convert them to tensors.
 
         Parameters
@@ -941,11 +979,15 @@ class PhysicsInformedNN(nn.Module):
             shape ``(N, 1)``.
         mutdata : numpy.ndarray or None, optional
             Physical turbulent viscosity with shape ``(N, 1)``. Required
-            for RANS and ignored for Euler.
+            for RANS and ignored for Euler. Entries with a false observation
+            mask may be NaN, including the entire array.
         fit_scale : bool, optional
             Whether to fit ``mut_scale`` from the 95th percentile of the
             nondimensional RANS viscosity, falling back to 1.0 if it is
-            nonpositive. Otherwise, reuse the previously fitted scale.
+            nonpositive or unobserved. Otherwise, reuse the fitted scale.
+        observed : dict or None, optional
+            Boolean arrays with shape ``(N, 1)`` for each observed field.
+            Unobserved entries may be NaN and are excluded from scaling.
 
         Returns
         -------
@@ -971,12 +1013,24 @@ class PhysicsInformedNN(nn.Module):
         # Turbulent viscosity scaling
         if self.eq == "rans":
             if mutstar is None:
-                raise ValueError("For equation='rans', mut must be provided.")
+                raise ValueError("For run.equation=rans, mu_t must be provided.")
 
             if fit_scale:
-                self.mut_scale = float(np.percentile(mutstar, 95.0))
+                mut_observed = mutstar
+                if observed is not None:
+                    mut_observed = mutstar[observed["mut"]]
 
-                if self.mut_scale <= 0.0:
+                if mut_observed.size:
+                    self.mut_scale = float(
+                        np.percentile(mut_observed, 95.0)
+                    )
+                else:
+                    self.mut_scale = 1.0
+
+                if (
+                    not np.isfinite(self.mut_scale)
+                    or self.mut_scale <= 0.0
+                ):
                     self.mut_scale = 1.0
 
             elif not hasattr(self, "mut_scale"):
@@ -1007,6 +1061,19 @@ class PhysicsInformedNN(nn.Module):
         return Xdata, x, y, rho, u, v, p, mut
 
     def _prepare_torch_collocation_data(self, collocation_dataset):
+        """Convert collocation coordinates to nondimensional tensors.
+
+        Parameters
+        ----------
+        collocation_dataset : dict
+            Physical coordinates under ``"xf"`` and ``"yf"``.
+
+        Returns
+        -------
+        tuple
+            Tensors ``(Xf, xf, yf)`` on the model's device, or three None
+            values for supervised models.
+        """
 
         if collocation_dataset is None or self.model == "pinn":
             xf = collocation_dataset["xf"]
@@ -1099,6 +1166,23 @@ class PhysicsInformedNN(nn.Module):
         value_scale,
         name,
     ):
+        """Convert one observation split to nondimensional tensors.
+
+        Parameters
+        ----------
+        split : dict
+            Physical coordinates ``"X"`` and observed values ``"value"``.
+        value_scale : float
+            Positive reference scale for the observed values.
+        name : str
+            Dataset label used in error messages.
+
+        Returns
+        -------
+        dict or None
+            Tensors under ``"X"`` and ``"value"`` on the model's device,
+            or None if the split is empty.
+        """
 
         for scale in (self.Lref, value_scale):
             if not np.isfinite(scale) or scale <= 0:
@@ -1219,9 +1303,9 @@ class PhysicsInformedNN(nn.Module):
  
         return xstar, ystar
 
-    def _evaluate_cfd(self, xdata, ydata, rhodata,
-                     udata, vdata, pdata, mutdata=None):
-        """Compute error metrics on held-out cfd data.
+    def evaluate_forward(self, xdata, ydata, rhodata,
+                     udata, vdata, pdata, mutdata=None, observed=None):
+        """Compute error metrics on held-out forward (cfd) test data.
             
         Parameters
         ----------
@@ -1231,6 +1315,8 @@ class PhysicsInformedNN(nn.Module):
             Reference test values for density, velocity, and pressure.
         mutdata : numpy.ndarray or None, optional
             Reference eddy viscosity for RANS cases.
+        observed : dict or None, optional
+            Boolean arrays selecting the available targets for each field.
 
         Returns
         -------
@@ -1283,18 +1369,48 @@ class PhysicsInformedNN(nn.Module):
 
         metrics = {}
 
-        metrics["rho"] = compute_metrics(rho_pred, rho_true)
-        metrics["u"]   = compute_metrics(u_pred,   u_true)
-        metrics["v"]   = compute_metrics(v_pred,   v_true)
-        metrics["p"]   = compute_metrics(p_pred,   p_true)
-
+        # Obtain prescribed fields if any
+        fields = {
+            "rho": (rho_pred, rho_true),
+            "u": (u_pred, u_true),
+            "v": (v_pred, v_true),
+            "p": (p_pred, p_true),
+        }
         if self.eq == "rans":
-            metrics["mut"] = compute_metrics(mut_pred, mut_true)
+            fields["mut"] = (mut_pred, mut_true)
+
+        masks = None
+        if observed is not None:
+            # Receives true or false if the point was prescribed ot not
+            masks = self._prepare_cfd_observed({"observed": observed})
+
+        for field, (pred, true) in fields.items():
+            if masks is not None:
+                selected = masks[field]
+
+                if not torch.any(selected):
+                    continue
+                pred = pred[selected]
+                true = true[selected]
+
+            metrics[field] = compute_metrics(pred, true)
 
         return metrics
 
-    def _evaluate_observation(self, test_observation):
-        """Compute error metrics on held-out observation data."""
+    def evaluate_inverse(self, test_observation):
+        """Compute error metrics on held-out inverse test data.
+
+        Parameters
+        ----------
+        test_observation : dict
+            Nondimensional test observations grouped by modality, each
+            containing coordinate tensors ``"X"`` and targets ``"value"``.
+
+        Returns
+        -------
+        dict
+            Metrics for available observations, or an empty dict if none exist.
+        """
 
         # Switch to evaluation mode, affecting layers such as dropout 
         # and BatchNorm.    

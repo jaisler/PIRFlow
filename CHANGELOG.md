@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
 - Added observation data treatment for the inverse problem (#41)
 - Added observation dataset preparation for inverse problem (#42)
 - Added inverse problem for MLP architecture (#43)
+- Added support for partial boundary condition information for inverse problems (#45)
 
 ### Changed
 - Created a dedicated configuration directory (#19)

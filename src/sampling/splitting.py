@@ -38,7 +38,7 @@ def valid_indeces(indeces, expected_size, number_of_points):
         and np.all(indeces < number_of_points)
     )
 
-def get_data_split_indeces(N, params):
+def get_data_split_indeces(N, params, boundary_names=None):
     """Load a compatible data split or generate and save a new one.
 
     Parameters
@@ -47,6 +47,9 @@ def get_data_split_indeces(N, params):
         Total number of data points.
     params : dict
         Configuration parameters.
+    boundary_names : numpy.ndarray or None, optional
+        Boundary identity for each point. Split each boundary separately
+        and validate its membership when reusing saved indices.
 
     Returns
     -------
@@ -77,6 +80,24 @@ def get_data_split_indeces(N, params):
     # Give any rounding remainder to the training dataset
     N_train_data += (N - N_train_data - N_val_data - N_test_data)
 
+    boundary_splits = []
+    if boundary_names is not None:
+        
+        for name in dict.fromkeys(boundary_names):
+            # Find the indices of points on that boundary
+            indices = np.flatnonzero(boundary_names == name)
+            
+            n_val = int(len(indices) * perc_val / 100)
+            n_test = int(len(indices) * perc_test / 100)
+            n_train = len(indices) - n_val - n_test
+
+            # Split for each boundary condition
+            boundary_splits.append((indices, n_train, n_val))
+        
+        N_train_data = sum(split[1] for split in boundary_splits)
+        N_val_data = sum(split[2] for split in boundary_splits)
+        N_test_data = N - N_train_data - N_val_data
+
     # Path for the dataset split
     idx_file = Path(params['paths']['samples']) / "idx_split_data.npz"
 
@@ -94,11 +115,13 @@ def get_data_split_indeces(N, params):
                 idx_train = split["idx_train"]
                 idx_val = split["idx_val"]
                 idx_test = split["idx_test"]
+                saved_names = split.get("boundary_names")
 
             split_is_valid = (
                 valid_indeces(idx_train, N_train_data, N)
                 and valid_indeces(idx_val, N_val_data, N)
                 and valid_indeces(idx_test, N_test_data, N)
+                and np.array_equal(saved_names, boundary_names)
             )
 
             if split_is_valid:
@@ -134,21 +157,41 @@ def get_data_split_indeces(N, params):
             params.get("seed", 1234)
         )
 
-        idx_all = rng.permutation(N)
+        if boundary_splits:
+            training, validation, test = [], [], []
+            
+            for indices, n_train, n_val in boundary_splits:
+                
+                indices = rng.permutation(indices)
+                training.append(indices[:n_train])
+                validation.append(indices[n_train:n_train + n_val])
+                test.append(indices[n_train + n_val:])
 
-        train_end = N_train_data
-        val_end = train_end + N_val_data
-        test_end = val_end + N_test_data
+            idx_train = np.concatenate(training)
+            idx_val = np.concatenate(validation)
+            idx_test = np.concatenate(test)
 
-        idx_train = idx_all[:train_end]
-        idx_val = idx_all[train_end:val_end]
-        idx_test = idx_all[val_end:test_end]
+        else:
+            idx_all = rng.permutation(N)
+
+            train_end = N_train_data
+            val_end = train_end + N_val_data
+            test_end = val_end + N_test_data
+
+            idx_train = idx_all[:train_end]
+            idx_val = idx_all[train_end:val_end]
+            idx_test = idx_all[val_end:test_end]
+
+        boundary_info = {}
+        if boundary_names is not None:
+            boundary_info["boundary_names"] = boundary_names
 
         np.savez(
             idx_file,
             idx_train=idx_train,
             idx_val=idx_val,
             idx_test=idx_test,
+            **boundary_info,
         )
 
         print("Dataset split prepared.")
@@ -232,6 +275,8 @@ def prepare_cfd_datasets(data_pnts, params):
         ``"train"``, ``"val"``, or ``"test"`` to those keys. Validation
         and test entries are ``None`` when their split contains no points.
         All arrays retain their physical units.
+        Inverse boundary datasets also include boolean ``observed`` masks
+        per field and per-point ``boundary_names`` in every subset.
     """
     
     # Note that, the number of points inside the geometry is not the same
@@ -260,7 +305,9 @@ def prepare_cfd_datasets(data_pnts, params):
 
     # Get data split indeces 
     (idx_train, idx_val, idx_test, N_train_data, N_val_data, 
-        N_test_data) = get_data_split_indeces(N, params)
+        N_test_data) = get_data_split_indeces(
+            N, params, data_pnts.get("boundary_names")
+        )
     
     # Training data
     xtrain = x[idx_train, None]
@@ -339,7 +386,7 @@ def prepare_cfd_datasets(data_pnts, params):
     }
 
 
-        # Test data
+    # Test data
     test_data = {
         "xtest": xtest,
         "ytest": ytest,
@@ -349,6 +396,28 @@ def prepare_cfd_datasets(data_pnts, params):
         "ptest": ptest,
         "muttest": muttest,
     }
+
+    # Keep field availability and boundary identity aligned with coordinates.
+    # Note that, subset refers to the original dictionary, rather than 
+    # creating a copy.
+    subsets = [
+       (all, np.arange(N)),
+        (training_data, idx_train),
+        (validation_data, idx_val),
+        (test_data, idx_test),
+    ]
+        
+    if "observed" in data_pnts:
+        for subset, indices in subsets:
+            # create an observed entry
+            subset["observed"] = {} 
+
+            for field, observed in data_pnts["observed"].items():
+                selected = observed[indices]
+                subset["observed"][field] = selected.reshape(-1, 1)
+
+            # create a boundary_names entry
+            subset["boundary_names"] = data_pnts["boundary_names"][indices]
 
     # Print dataset information
     print("---------------------------------------")

@@ -530,11 +530,18 @@ def plot_sampling_points(pall, pin, pbc, pgrad, params, collpts=False):
     ax.set_aspect("equal", adjustable="box")
     fig.subplots_adjust(left=0.08, right=0.99, bottom=0.15, top=0.97)
 
-    ax.legend(
-        [p0, p1, p2],
-        [r"Inner", r"Boundary", r"$\left|\nabla \rho\right|^{\alpha}$"],
-        loc="lower left",
-    )
+    if pin.size == 0 and pgrad.size == 0 and not collpts:
+        ax.legend(
+            [p1],
+            [r"Boundary"],
+            loc="lower left",
+        )
+    else:
+        ax.legend(
+            [p0, p1, p2],
+            [r"Inner", r"Boundary", r"$\left|\nabla \rho\right|^{\alpha}$"],
+            loc="lower left",
+        )
 
     if collpts:
         fig.savefig(
@@ -544,6 +551,7 @@ def plot_sampling_points(pall, pin, pbc, pgrad, params, collpts=False):
         fig.savefig(
             params["paths"]["results"] + "/" + "data_dataset_points.pdf"
         )
+
 
     plt.close(fig)
 
