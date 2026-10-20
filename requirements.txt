@@ -8,5 +8,5 @@ PyYAML==6.0.3
 scikit-learn==1.8.0
 scipy==1.17.0
 sympy==1.14.0
-torch==2.2.2
+torch==2.14.1
 tqdm==4.67.3
