@@ -4,8 +4,8 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from src.utils import compute_metrics
-from src.utils import print_metrics_table
+from pirflow.utils import compute_metrics
+from pirflow.utils import print_metrics_table
 
 class FlowFieldPostProcessor:
     """Compare predicted and reference flow fields on a CFD mesh."""

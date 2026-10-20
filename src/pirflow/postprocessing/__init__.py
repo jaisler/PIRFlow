@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 
-# src/postprocessing/__init__.py
+# src/pirflow/postprocessing/__init__.py
 from .flowfield import FlowFieldPostProcessor
 from .workflow import run_flowfield_postprocessing
 

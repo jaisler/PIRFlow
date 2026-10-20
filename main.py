@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-from src.runner import run
+from src.pirflow.runner import run
 
 if __name__ == "__main__":
     run()

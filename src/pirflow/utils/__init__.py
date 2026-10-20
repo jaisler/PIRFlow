@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 """Provide metrics, loss reporting, and dataset and flow-field plots."""
 
-# src/utils/__init__.py
+# src/pirflow/utils/__init__.py
 from .metrics import compute_metrics, print_metrics_table
 from .print_loss import print_loss
 from .plot import (

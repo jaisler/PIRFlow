@@ -3,7 +3,7 @@
 Factory function for creating neural network architectures.
 """
 
-from src.networks import MLP, GNN
+from pirflow.networks import MLP, GNN
 
 def build_network(params):
     """Create the configured MLP or GNN architecture.

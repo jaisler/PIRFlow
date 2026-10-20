@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 import time
 
-from src.utils import plot_history_training
+from pirflow.utils import plot_history_training
 
 def training_is_enabled(params):
     """Check whether an optimizer has a positive training budget.
