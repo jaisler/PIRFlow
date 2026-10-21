@@ -1,23 +1,23 @@
 # SPDX-License-Identifier: MIT
 """Coordinate configured dataset preparation, model training, and plotting."""
 
-from src.config import create_output_directories, load_config
-from src.networks import build_network
-from src.observation import ObservationData, prepare_observation_datasets
-from src.postprocessing import run_flowfield_postprocessing
-from src.pinn import (
+from pirflow.io import create_output_directories, load_config
+from pirflow.networks import build_network
+from pirflow.observation import ObservationData, prepare_observation_datasets
+from pirflow.postprocessing import run_flowfield_postprocessing
+from pirflow.pinn import (
     build_pinn_model, 
     evaluate_forward_test_dataset, 
     evaluate_inverse_test_dataset, 
     train_model,
 )
-from src.sampling import (
+from pirflow.sampling import (
     get_collocation_points,
     get_data_points,
     prepare_cfd_datasets,
     prepare_collocation_dataset,
 )
-from src.utils import (
+from pirflow.utils import (
     plot_observation_data,
     plot_prepared_observation_datasets,
     plot_prepared_sampling_datasets,
@@ -26,7 +26,7 @@ from src.utils import (
 )
 
 
-def run() -> None:
+def run(config_path) -> None:
     """Execute the configured PIRFlow reconstruction workflow.
 
     Returns
@@ -36,7 +36,7 @@ def run() -> None:
     """
 
     # Configuration file
-    params = load_config()
+    params = load_config(config_path)
 
     # Create output directories
     create_output_directories(params)

@@ -3,8 +3,8 @@
 import os
 import pyvista as pv
 
-import src.utils.plot as pl
-from src.postprocessing import FlowFieldPostProcessor
+import pirflow.utils.plot as pl
+from pirflow.postprocessing import FlowFieldPostProcessor
 
 def load_flowfield(params):
     """Load the configured CFD mesh and reference flowfield.

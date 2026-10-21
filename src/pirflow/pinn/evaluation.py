@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 import torch
-from src.utils import print_metrics_table
+from pirflow.utils import print_metrics_table
 
 def evaluate_forward_test_dataset(model, cfd):
     """Evaluate a model on the CFD test dataset.

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 
-# src/datasets/__init__.py
+# src/pirflow/datasets/__init__.py
 from .splitting import create_split_indices
 
 __all__ = [

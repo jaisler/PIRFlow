@@ -49,6 +49,63 @@ strategies, and loss formulations.
 - **Modular implementation:** separate components for networks, physical
   residuals, losses, sampling, evaluation, and post-processing.
 
+## Installation
+
+Run the following commands from the repository root, where
+`pyproject.toml` is located.
+
+### Create a virtual environment
+
+On macOS or Linux:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+### Install PIRFlow
+
+Install PIRFlow and its declared Python dependencies:
+
+```bash
+python -m pip install --upgrade pip
+python -m pip install .
+```
+
+For development, use an editable installation instead:
+
+```bash
+python -m pip install -e .
+```
+
+An editable installation makes changes to the Python source code
+available on subsequent runs without reinstalling. Reinstall after
+changing dependencies or other package metadata.
+
+### Running PIRFlow
+
+With your virtual environment active, run the launcher from the
+repository root and provide a configuration file:
+
+```bash
+python main.py --config config/configuration.yaml
+```
+
+The selected file must exist and contain the settings for the intended
+case.
+
+Display the available command-line options with:
+
+```bash
+python main.py --help
+```
+
+### Configuration
+
+Before launching a case, update the YAML configuration with the
+appropriate input files, output directories, physical parameters,
+network settings, and training options.
+
 ## Documentation
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for code contribution standards.
