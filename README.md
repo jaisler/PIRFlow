@@ -60,12 +60,17 @@ On macOS or Linux:
 
 ```bash
 python3 -m venv .venv
+```
+
+and activate it:
+```
 source .venv/bin/activate
 ```
 
 ### Install PIRFlow
 
-Install PIRFlow and its declared Python dependencies:
+With your virtual environment activated, install PIRFlow 
+and its declared Python dependencies:
 
 ```bash
 python -m pip install --upgrade pip
@@ -82,25 +87,25 @@ An editable installation makes changes to the Python source code
 available on subsequent runs without reinstalling. Reinstall after
 changing dependencies or other package metadata.
 
+Installation makes the pirflow command available in that environment.
+
 ### Running PIRFlow
 
-With your virtual environment active, run the launcher from the
-repository root and provide a configuration file:
+Run PIRFlow with a YAML configuration file:
 
 ```bash
-python main.py --config config/configuration.yaml
+pirflow --config config/configuration.yaml
 ```
 
-The selected file must exist and contain the settings for the intended
-case.
+The --config argument is required and specifies the configuration 
+file for the reconstruction worflow. Replace the example path with 
+the configuration you want to use.
 
-Display the available command-line options with:
+To display the available command-line options:
 
 ```bash
 python main.py --help
 ```
-
-### Configuration
 
 Before launching a case, update the YAML configuration with the
 appropriate input files, output directories, physical parameters,
