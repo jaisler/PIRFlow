@@ -26,7 +26,7 @@ from pirflow.utils import (
 )
 
 
-def run() -> None:
+def run(config_path) -> None:
     """Execute the configured PIRFlow reconstruction workflow.
 
     Returns
@@ -36,7 +36,7 @@ def run() -> None:
     """
 
     # Configuration file
-    params = load_config()
+    params = load_config(config_path)
 
     # Create output directories
     create_output_directories(params)
