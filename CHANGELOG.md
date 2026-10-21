@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file.
 - Added inverse problem for MLP architecture (#43)
 - Added support for partial boundary condition information for inverse problems (#45)
 - Added pip installation support for PIRFlow (#46)
+- Added pirflow command-line entry point (#47)
 
 ### Changed
 - Created a dedicated configuration directory (#19)

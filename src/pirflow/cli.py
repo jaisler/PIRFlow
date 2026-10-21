@@ -2,7 +2,7 @@
 import argparse
 from pathlib import Path
 
-from src.pirflow.runner import run
+from pirflow.runner import run
 
 def main():
     
@@ -18,6 +18,3 @@ def main():
 
     config_path = args.config.expanduser().resolve(strict=True)
     run(config_path=config_path)
-
-if __name__ == "__main__":
-    main()
