@@ -8,6 +8,16 @@ version = "0.1.0"
 description = "physics-informed reconstruction of flow fields"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
+license = "MIT"
+license-files = ["LICENSE"]
+
+authors = [
+  {name = "Joao Isler", email = "joao.isler@gmail.com"}
+]
+
+maintainers = [
+  {name = "Joao Isler", email = "joao.isler@gmail.com"}
+]
 
 dependencies = [
     "gmsh==4.15.1",
@@ -28,3 +38,6 @@ dependencies = [
 where = ["src"]
 include = ["pirflow", "pirflow.*"]
 namespaces = false
+
+[project.scripts]
+pirflow = "pirflow.cli:main"
