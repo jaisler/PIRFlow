@@ -77,10 +77,11 @@ python -m pip install --upgrade pip
 python -m pip install .
 ```
 
-For development, use an editable installation instead:
+For development, install the project in editable mode with its 
+test dependencies:
 
 ```bash
-python -m pip install -e .
+python -m pip install -e ".[test]"
 ```
 
 An editable installation makes changes to the Python source code
@@ -110,6 +111,21 @@ python main.py --help
 Before launching a case, update the YAML configuration with the
 appropriate input files, output directories, physical parameters,
 network settings, and training options.
+
+## Testing
+
+After installing the development dependencies, run the automated tests
+from the repository root with your virtual environment activated:
+
+```bash
+python -m pytest -v
+```
+
+To run an individual test file:
+
+```bash
+python -m pytest tests/test_metrics.py -v
+```
 
 ## Documentation
 
