@@ -34,6 +34,11 @@ dependencies = [
     "tqdm==4.67.3",
 ]
 
+[project.optional-dependencies]
+test = [
+    "pytest",
+]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["pirflow", "pirflow.*"]

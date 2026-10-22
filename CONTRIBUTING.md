@@ -18,14 +18,15 @@ repositories are reserved for the code output.
 
 ## Development Setup
 
-PIRFlow is a Python project. Create an isolated environment and install the
-pinned dependencies:
+PIRFlow requires Python 3.12. From the repository root, create a virtual
+environment and install the project in editable mode with its test
+dependencies:
 
 ```bash
-python3 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+python -m pip install -e ".[test]"
 ```
 
 Copy or edit `configs/configuration.yaml` for your local CFD flowfield, mesh,
@@ -76,12 +77,39 @@ When adding a configuration option:
 
 ## Validation
 
-PIRFlow does not yet have a complete automated test suite. Before submitting a
-change, perform the checks relevant to your work:
+PIRFlow uses pytest for automated tests. After completing the development
+setup, run the test suite from the repository root:
 
 ```bash
-python -m compileall -q main.py src
-python main.py
+python -m pytest -v
+```
+
+To run a single test file:
+
+```bash
+python -m pytest tests/test_metrics.py -v
+```
+
+Place tests in the top-level `tests/` directory. Name test files
+`test_*.py` and test functions `test_*`. An `__init__.py` file is not
+required for the current test layout.
+
+Current tests cover:
+
+- `tests/test_cli.py`: forwarding an existing configuration file's
+  resolved path to the runner without executing the workflow.
+- `tests/test_metrics.py`: checking MSE, RMSE, relative L2, and R²
+  against hand-calculated expected values.
+
+Include `# SPDX-License-Identifier: MIT` at the top of new Python test
+files. For floating-point results, use `pytest.approx()` with tolerances
+appropriate to the calculation.
+
+When a change affects the full reconstruction workflow, also run a
+relevant configuration using your local input data:
+
+```bash
+pirflow --config configs/configuration.yaml
 ```
 
 Also verify the affected combinations where practical:
