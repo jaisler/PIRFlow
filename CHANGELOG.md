@@ -19,7 +19,7 @@ All notable changes to this project will be documented in this file.
 - Added support for partial boundary condition information for inverse problems (#45)
 - Added pip installation support for PIRFlow (#46)
 - Added pirflow command-line entry point (#47)
-- Add initial test suite and CI workflow (#48)
+- Added initial test suite and CI workflow (#48)
 
 ### Changed
 - Created a dedicated configuration directory (#19)
@@ -32,6 +32,7 @@ All notable changes to this project will be documented in this file.
 - Refactored the main workflow (#35)
 - Refactored the training pipeline (#36)
 - Cleaned up the main workflow (#37)
+- Enabled plotting for GPU runs (#50)
 
 ### Removed
 - Removed collocation dataset definition (#32)
