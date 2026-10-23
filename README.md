@@ -56,14 +56,14 @@ strategies, and loss formulations.
 ## Installation
 
 Run the following commands from the repository root, where
-`pyproject.toml` is located.
+`pyproject.toml` is located. PIRFlow requires Python 3.12.
 
 ### Create a virtual environment
 
 On macOS or Linux:
 
 ```bash
-python3 -m venv .venv
+python3.12 -m venv .venv
 ```
 
 and activate it:
@@ -99,17 +99,17 @@ Installation makes the pirflow command available in that environment.
 Run PIRFlow with a YAML configuration file:
 
 ```bash
-pirflow --config config/configuration.yaml
+pirflow --config configs/configuration.yaml
 ```
 
-The --config argument is required and specifies the configuration 
-file for the reconstruction worflow. Replace the example path with 
+The `--config` argument is required and specifies the configuration
+file for the reconstruction workflow. Replace the example path with
 the configuration you want to use.
 
 To display the available command-line options:
 
 ```bash
-python main.py --help
+pirflow --help
 ```
 
 Before launching a case, update the YAML configuration with the
@@ -132,6 +132,9 @@ python -m pytest tests/test_metrics.py -v
 ```
 
 ## Documentation
+
+See the [usage guide](docs/README.md) for input formats, configuration,
+outputs, and checkpoint reuse.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for code contribution standards.
 
