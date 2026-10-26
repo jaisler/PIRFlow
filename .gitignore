@@ -18,6 +18,9 @@ __pycache__/
 # Test cache
 .pytest_cache/
 
+# Documentation build output
+/docs/build/
+
 # Generated/local project data
 /samples/
 /model/
