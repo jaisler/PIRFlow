@@ -133,8 +133,10 @@ python -m pytest tests/test_metrics.py -v
 
 ## Documentation
 
-See the [usage guide](docs/README.md) for input formats, configuration,
-outputs, and checkpoint reuse.
+The **PIRFlow User Guide** covers input files and units, workflow 
+configuration, sampling, training, outputs, and checkpoint reuse.
+Read the [Markdown guide](docs/README.md) or compile the
+[LaTeX source](docs/user-guide.tex) from the repository root:
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for code contribution standards.
 
