@@ -116,21 +116,6 @@ Before launching a case, update the YAML configuration with the
 appropriate input files, output directories, physical parameters,
 network settings, and training options.
 
-## Testing
-
-After installing the development dependencies, run the automated tests
-from the repository root with your virtual environment activated:
-
-```bash
-python -m pytest -v
-```
-
-To run an individual test file:
-
-```bash
-python -m pytest tests/test_metrics.py -v
-```
-
 ## Documentation
 
 The **PIRFlow User Guide** covers input files and units, workflow 
