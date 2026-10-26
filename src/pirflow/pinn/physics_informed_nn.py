@@ -95,6 +95,11 @@ class PhysicsInformedNN(nn.Module):
         if self.model not in ('supervised', 'pinn'):
             raise ValueError(f"Unknown model type: {self.model}")
 
+        if (self.problem == "inverse" and self.model == "supervised"):
+            raise ValueError(
+                "Inverse problems require run.model='pinn'."
+            )
+
         # Check the equation
         if self.eq == 'euler':
             expected_out = 4

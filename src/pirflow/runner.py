@@ -41,6 +41,17 @@ def run(config_path) -> None:
     # Create output directories
     create_output_directories(params)
 
+    # Problem definition
+    problem = params["run"].get("problem", "forward").lower()
+
+    # model
+    model = params["run"].get("model", "supervised").lower()
+
+    if (problem == "inverse" and model == "supervised"):
+        raise ValueError(
+            "Inverse problems require run.model='pinn'."
+        )
+
     # Sample or read collocation points if pinn model
     # Required for both forward and inverse problems.
     collocation_pnts = get_collocation_points(params)
@@ -57,9 +68,6 @@ def run(config_path) -> None:
 
     # Build neural network
     network = build_network(params)
-
-    # Problem definition
-    problem = params["run"].get("problem", "forward").lower()
 
     # Boundary config for inverse problem
     boundary_config = params.get("identification", {}).get(
