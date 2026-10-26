@@ -56,10 +56,7 @@ def run_flowfield_postprocessing(model, params):
 
     postprocessor.run(prefix=params["name"])
 
-    do_plotting = (
-        model.device_str == "cpu"
-        and params["post_processing"].get("plot", True)
-    )
+    do_plotting = (params["post_processing"].get("plot", True))
 
     # Note that, after training, the model can be reused for post-processing 
     # without retraining.
@@ -96,7 +93,6 @@ def run_flowfield_postprocessing(model, params):
     else:
         print("---------------------------------------")
         print(
-            "Skipping PyVista plotting. Plotting is only enabled when "
-            "running in cpu device and "
-            "params['post_processing']['plot'] is True."
+            "Skipping PyVista plotting: post_processing.plot "
+            "is set to False."
         )
