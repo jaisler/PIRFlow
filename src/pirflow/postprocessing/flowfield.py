@@ -363,6 +363,8 @@ class FlowFieldPostProcessor:
         """
 
         if hasattr(value, "detach"):
+            # This disconnects the prediction from gradient tracking, 
+            # transfers it to the CPU, and converts it into a NumPy array.
             value = value.detach().cpu().numpy()
 
         value = np.asarray(value)

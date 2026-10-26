@@ -30,8 +30,8 @@ def compute_metrics(y_pred, y_true, eps=1.0e-12):
         raise ValueError("Cannot compute metrics on empty tensors.")
 
     # Use double precision for metric arithmetic.
-    pred = y_pred.detach().to(dtype=torch.float64)
-    true = y_true.detach().to(dtype=torch.float64)
+    pred = y_pred.detach().cpu().to(dtype=torch.float64)
+    true = y_true.detach().cpu().to(dtype=torch.float64)
 
     if not (
         torch.isfinite(pred).all().item()
