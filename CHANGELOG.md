@@ -24,6 +24,7 @@ All notable changes to this project will be documented in this file.
 - Added initial test suite and CI workflow (#48)
 - Added GitHub Actions CI for automated tests (#51)
 - Added initial documentation (#49)
+- Added GitHub Actions CI for automated tests (#51)
 
 ### Changed
 - Created a dedicated configuration directory (#19)
