@@ -1,4 +1,8 @@
+<!-- SPDX-License-Identifier: MIT -->
+
 # PIRFlow
+
+[![CI](https://github.com/jaisler/PIRFlow/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/jaisler/PIRFlow/actions/workflows/ci.yml)
 
 PIRFlow (Physics-Informed Reconstruction of Flow fields) is a PyTorch 
 framework for physics-informed reconstruction of compressible flow fields 

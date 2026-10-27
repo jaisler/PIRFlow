@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: MIT -->
+
 # Contributing to PIRFlow
 
 Thank you for contributing to PIRFlow. Contributions that improve the
