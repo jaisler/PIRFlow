@@ -22,7 +22,11 @@ All notable changes to this project will be documented in this file.
 - Added pip installation support for PIRFlow (#46)
 - Added pirflow command-line entry point (#47)
 - Added initial test suite and CI workflow (#48)
+<<<<<<< HEAD
 - Added GitHub Actions CI for automated tests (#51)
+=======
+- Added initial documentation (#49)
+>>>>>>> 3709509 (Update CHANGELOG)
 
 ### Changed
 - Created a dedicated configuration directory (#19)
