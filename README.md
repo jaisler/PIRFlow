@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: MIT -->
+
 # PIRFlow
 
 PIRFlow (Physics-Informed Reconstruction of Flow fields) is a PyTorch 
