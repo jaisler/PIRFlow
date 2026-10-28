@@ -39,7 +39,7 @@ run:
   problem: inverse           # Options: forward or inverse
   model: pinn                # Options: supervised or pinn
   equation: rans             # Options: euler or rans
-  device: cpu                # Options: cpu or cuda
+  device: cpu                # Options: cpu, cuda or mps
 
   routines:
     sampling: true
