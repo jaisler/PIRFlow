@@ -45,9 +45,9 @@ def build_network(params):
 
         gnn_cfg = params['network']['gnn']
         # Node input dimension
-        node_input_dim = params['geometry']['dimension']
+        node_input_dim = params['dimension']
         # Edge input dimension
-        edge_input_dim = params['geometry']['dimension']
+        edge_input_dim = params['dimension']
 
         if gnn_cfg['attributes']['node']['boundary_marker']:
             node_input_dim += 1

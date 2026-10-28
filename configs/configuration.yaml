@@ -13,14 +13,9 @@ paths:
   samples: /path/to/samples/directory
   model: /path/to/model/directory
 
-# Name
-# ----
-name: afrl_scramjet
-
-# Geometry
-# --------
-geometry:
-  dimension: 2
+# Spatial dimension
+# -----------------
+dimension: 2
 
 # Files
 # -----

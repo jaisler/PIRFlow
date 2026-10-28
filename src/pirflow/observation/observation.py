@@ -24,7 +24,7 @@ class ObservationData:
             PIRFlow configuration.
         """
 
-        self.dims = params["geometry"]["dimension"]
+        self.dims = params["dimension"]
 
         # Observation config
         self.config = params["identification"]["observations"]

@@ -25,7 +25,7 @@ class SamplingData:
 
         self.collpts = collpts
         self.params = params
-        self.dims = params['geometry']['dimension']
+        self.dims = params['dimension']
         self.rng = np.random.default_rng(RANDOM_SEED)
         # For a collocation object, it is always False
         self.boundary_only = (

@@ -73,7 +73,7 @@ def _prepare_schlieren(schlieren, params):
         with shape ``(N, dimension)`` and ``"value"`` with shape ``(N, 1)``.
     """
 
-    dims = params["geometry"]["dimension"]
+    dims = params["dimension"]
     
     # Coordinates
     coordinate_names = ("x", "y", "z")[:dims]
@@ -164,7 +164,7 @@ def _prepare_velocity_profiles(velocity_profiles, params):
         ``"value"``.
     """
 
-    dims = params["geometry"]["dimension"]
+    dims = params["dimension"]
     
     # Coordinates
     coordinate_names = ("x", "y", "z")[:dims]
@@ -272,7 +272,7 @@ def _prepare_pressure_taps(pressure_taps, params):
         with shape ``(N, dimension)`` and ``"value"`` with shape ``(N, 1)``.
     """
 
-    dims = params["geometry"]["dimension"]
+    dims = params["dimension"]
     
     # Coordinates
     coordinate_names = ("x", "y", "z")[:dims]

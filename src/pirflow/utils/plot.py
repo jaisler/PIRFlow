@@ -111,7 +111,7 @@ def plot_observation_data(observation, params):
     # for any kind of combination.
 
 
-    dims = params["geometry"]["dimension"]
+    dims = params["dimension"]
     config_vp = params["identification"]["observations"]["velocity_profiles"]
     n_files = config_vp["n_files"]
 
