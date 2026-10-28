@@ -50,15 +50,16 @@ data, and optionally post-processes the full CFD mesh.
 ### Directories and filenames
 
 The `paths` section contains directories. The `files` section selects the CFD
-file, Gmsh geometry, and checkpoint basename. Replace these sections in your
-local copy with one entry per key. For example, with commands run from the
-repository root:
+file, Gmsh geometry, and checkpoint basename. `paths.geometry` selects the
+Gmsh geometry directory and `files.geometry` its filename. Replace these
+sections in your local copy with one entry per key. For example, with commands
+run from the repository root:
 
 ```yaml
 paths:
   # In
   flow: /path/to/case/cfd
-  mesh: /path/to/case/geometry
+  geometry: /path/to/case/geometry
   observations: /path/to/case/observations
   # Out
   results: results/my_case
@@ -67,7 +68,7 @@ paths:
 
 files:
   flowfield: flow.vtu
-  mesh: domain.geo
+  geometry: domain.geo
   model_name: reconstruction
 
 name: my_case

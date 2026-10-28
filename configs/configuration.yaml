@@ -22,10 +22,6 @@ name: afrl_scramjet
 geometry:
   dimension: 2
 
-# Random number generation
-# ------------------------
-seed: 1234
-
 # Files
 # -----
 files:
