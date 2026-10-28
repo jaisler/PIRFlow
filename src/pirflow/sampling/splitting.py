@@ -2,8 +2,8 @@
 """Prepare CFD dataset splits and collocation coordinates using saved indices."""
 
 import numpy as np
-from pathlib import Path
 
+from pathlib import Path
 from pirflow.utils.randomness import RANDOM_SEED
 
 def valid_indeces(indeces, expected_size, number_of_points):

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: MIT
+
 import numpy as np
 
 from pirflow.utils.randomness import RANDOM_SEED

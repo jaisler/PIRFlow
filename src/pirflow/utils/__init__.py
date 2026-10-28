@@ -2,6 +2,7 @@
 """Provide metrics, loss reporting, and dataset and flow-field plots."""
 
 # src/pirflow/utils/__init__.py
+from .device import select_device
 from .metrics import compute_metrics, print_metrics_table
 from .print_loss import print_loss
 from .plot import (
@@ -23,4 +24,5 @@ __all__ = [
         "plot_schlieren_image",
         "print_metrics_table",
         "print_loss",
+	"select_device",
 ]
