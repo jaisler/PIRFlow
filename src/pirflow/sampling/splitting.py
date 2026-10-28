@@ -4,6 +4,8 @@
 import numpy as np
 from pathlib import Path
 
+from pirflow.utils.randomness import RANDOM_SEED
+
 def valid_indeces(indeces, expected_size, number_of_points):
     """Check the size and bounds of a one-dimensional index array.
 
@@ -153,9 +155,7 @@ def get_data_split_indeces(N, params, boundary_names=None):
         print("---------------------------------------")
         print("Generating a new dataset split.")
 
-        rng = np.random.default_rng(
-            params.get("seed", 1234)
-        )
+        rng = np.random.default_rng(RANDOM_SEED)
 
         if boundary_splits:
             training, validation, test = [], [], []
@@ -244,7 +244,7 @@ def get_collocation_indeces(N_coll, params):
             )
 
     else:
-        rng = np.random.default_rng(params.get("seed", 1234))
+        rng = np.random.default_rng(RANDOM_SEED)
         idxc = rng.choice(N_coll, N_coll, replace=False)
         np.save(idxc_file, idxc)
 
@@ -262,8 +262,8 @@ def prepare_cfd_datasets(data_pnts, params):
         ``"mut"`` with shape ``(N,)``. Only the first two coordinate and
         velocity components are used.
     params : dict
-        PIRFlow configuration defining split percentages, the random seed,
-        and the location and reuse of saved split indices.
+        PIRFlow configuration defining split percentages and the location
+        and reuse of saved split indices.
 
     Returns
     -------
@@ -443,8 +443,8 @@ def prepare_collocation_dataset(collocation_pnts, params):
         ``(N, dimension)``, or ``None`` when collocation is disabled.
         Only the first two coordinate components are used.
     params : dict
-        PIRFlow configuration defining the random seed and the location
-        and reuse of saved collocation indices.
+        PIRFlow configuration defining the location and reuse of saved
+        collocation indices.
 
     Returns
     -------

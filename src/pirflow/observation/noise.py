@@ -3,7 +3,10 @@
 
 import numpy as np
 
-def add_noise(values, noise_type, level, seed=None, nonnegative=False):
+from pirflow.utils.randomness import RANDOM_SEED
+
+
+def add_noise(values, noise_type, level, seed=RANDOM_SEED, nonnegative=False):
     """Add configured random noise to an observation field.
 
     Parameters

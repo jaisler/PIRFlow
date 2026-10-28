@@ -11,12 +11,6 @@ from .residuals import grad
 from .losses import loss_fn, validation_loss_fn
 from ..utils import print_loss, compute_metrics
 
-torch.manual_seed(1234)
-np.random.seed(1234)
-
-if torch.cuda.is_available():
-    torch.cuda.manual_seed_all(1234)
-
 class PhysicsInformedNN(nn.Module):
     """Combine a flow network with supervised and physical constraints."""
 

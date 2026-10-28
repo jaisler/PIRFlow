@@ -126,8 +126,7 @@ def _prepare_schlieren(schlieren, params):
     sampled_coords, sampled_values = sample_schlieren_observations(
         coordinates, 
         values, 
-        sampling_config, 
-        params["seed"]
+        sampling_config,
     )
 
     number_of_samples = sampled_coords.shape[0]
