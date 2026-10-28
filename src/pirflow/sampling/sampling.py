@@ -525,7 +525,11 @@ class SamplingData:
         # Turn off terminal output from Gmsh
         gmsh.option.setNumber("General.Terminal", 0)
         try:
-            gmsh.open(self.params['paths']['mesh']+'/'+self.params['files']['mesh'])
+            geometry_path = (
+                Path(self.params["paths"]["geometry"])
+                / self.params["files"]["geometry"]
+            )
+            gmsh.open(str(geometry_path))
             gmsh.model.geo.synchronize()
             #gmsh.model.mesh.generate(self.dims)
             # For 1D mesh generation before 2D
