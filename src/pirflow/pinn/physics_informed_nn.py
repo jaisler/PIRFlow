@@ -103,26 +103,31 @@ class PhysicsInformedNN(nn.Module):
 
         # Loss weights
         loss_weights = params['loss'].get("weights", {})
+        data_weights = loss_weights.get("data", {})
+        observation_weights = loss_weights.get("observations", {})
+        residual_weights = loss_weights.get("residual", {})
+
         # Data
-        self.w_rho = float(loss_weights['data'].get("rho", 1.0))
-        self.w_u   = float(loss_weights['data'].get("u", 1.0))
-        self.w_v   = float(loss_weights['data'].get("v", 1.0))
-        self.w_p   = float(loss_weights['data'].get("p", 1.0))
-        # Observation
-        self.w_obs_sch = float(loss_weights['observations'].get("schlieren", 1.0))
-        self.w_obs_u   = float(loss_weights['observations'].get("u", 1.0))
-        self.w_obs_v   = float(loss_weights['observations'].get("v", 1.0))
-        self.w_obs_p   = float(loss_weights['observations'].get("p", 1.0))
-        # Residual
-        self.w_f1  = float(loss_weights['residual'].get("f1", 1.0))
-        self.w_f2  = float(loss_weights['residual'].get("f2", 1.0))
-        self.w_f3  = float(loss_weights['residual'].get("f3", 1.0))
-        self.w_f4  = float(loss_weights['residual'].get("f4", 1.0))
-        # Equation
+        self.w_rho = float(data_weights.get("rho", 1.0))
+        self.w_u   = float(data_weights.get("u", 1.0))
+        self.w_v   = float(data_weights.get("v", 1.0))
+        self.w_p   = float(data_weights.get("p", 1.0))
         if self.eq == "euler":
             self.w_mut = 0.0
         elif self.eq == "rans":
-            self.w_mut = float(loss_weights['data'].get("mut", 1.0))
+            self.w_mut = float(data_weights.get("mut", 1.0))
+
+        # Observation
+        self.w_obs_sch = float(observation_weights.get("schlieren", 1.0))
+        self.w_obs_u   = float(observation_weights.get("u", 1.0))
+        self.w_obs_v   = float(observation_weights.get("v", 1.0))
+        self.w_obs_p   = float(observation_weights.get("p", 1.0))
+        
+        # Residual
+        self.w_f1  = float(residual_weights.get("f1", 1.0))
+        self.w_f2  = float(residual_weights.get("f2", 1.0))
+        self.w_f3  = float(residual_weights.get("f3", 1.0))
+        self.w_f4  = float(residual_weights.get("f4", 1.0))
 
         # Initialisation: 
         # Collocation points
@@ -176,7 +181,9 @@ class PhysicsInformedNN(nn.Module):
 
         # Boundary conditions for inverse problem
         boundary_inv = (
-            params["identification"]["boundary_conditions"]["enabled"]
+            params.get("identification", {})
+                  .get("boundary_conditions", {})
+                  .get("enabled", False)
         )
         self.use_inv_boundaries = (
             self.problem == "inverse" 

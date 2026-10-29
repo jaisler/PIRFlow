@@ -44,3 +44,4 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 - Fixed plot scale for the scaled absolute error plot (#38)
 - Fixed collocation points conditional for plotting (#39)
+- Fixed configuration problem definition (#52)
