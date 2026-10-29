@@ -24,7 +24,7 @@ class ObservationData:
             PIRFlow configuration.
         """
 
-        self.dims = params["geometry"]["dimension"]
+        self.dims = params["dimension"]
 
         # Observation config
         self.config = params["identification"]["observations"]
@@ -34,9 +34,6 @@ class ObservationData:
         # CFD flow field
         self.cfd_directory = Path(params["paths"]["flow"])
         self.cfd_filename = params["files"]["flowfield"]
-
-        # Seed (noise generation)
-        self.seed = params["seed"]
 
     def load_observation_data(self):
         """Load all enabled observation datasets.
@@ -160,7 +157,6 @@ class ObservationData:
             values=schlieren[schlieren_config["grad_type"]],
             noise_type=noise_config["type"],
             level=float(noise_config["level"]),
-            seed=self.seed,
             nonnegative=(schlieren_config["grad_type"] == "magnitude")
         )
 

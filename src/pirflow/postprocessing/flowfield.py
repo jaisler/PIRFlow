@@ -55,7 +55,7 @@ class FlowFieldPostProcessor:
         print("---------------------------------------")
         print("Postprocessing flowfields ...")
 
-    def run(self, prefix="flowfield"):
+    def run(self):
         """Run prediction, comparison, metrics, and VTK export.
 
         Parameters
@@ -78,7 +78,7 @@ class FlowFieldPostProcessor:
         
         # Write comparison flow fields to vtk file
         # Ref, pred, error
-        self.write_comparison_vtk(prefix)
+        self.write_comparison_vtk()
 
         # Compute the metrics
         self.compute_mesh_metrics()
@@ -316,13 +316,8 @@ class FlowFieldPostProcessor:
             rel_l2_percent=True,
         )
 
-    def write_comparison_vtk(self, prefix):
+    def write_comparison_vtk(self):
         """Write reference, prediction, and error fields to one VTK file.
-
-        Parameters
-        ----------
-        prefix : str
-            Output filename prefix.
 
         Returns
         -------
@@ -339,7 +334,7 @@ class FlowFieldPostProcessor:
         for name in self.error_fields:
             mesh.point_data[name] = self.error_fields[name]
 
-        filename = self.output_dir / f"{prefix}_comparison.vtk"
+        filename = self.output_dir / f"flowfield_comparison.vtk"
         mesh.save(filename)
 
         print("---------------------------------------")

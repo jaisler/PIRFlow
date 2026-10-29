@@ -3,11 +3,13 @@
 
 import numpy as np
 
+from pirflow.utils.randomness import RANDOM_SEED
+
 def sample_schlieren_observations(
         coordinates,
         values,
         sampling_config,
-        seed,
+        seed=RANDOM_SEED,
 ):
     """Select Schlieren observations using uniform and signal-based sampling.
 
@@ -24,8 +26,8 @@ def sample_schlieren_observations(
     sampling_config : dict
         Sampling settings containing ``points``, ``uniform_fraction``, and
         ``alpha``.
-    seed : int
-        Random seed used for reproducible sampling.
+    seed : int, optional
+        Random seed; defaults to the shared internal seed.
 
     Returns
     -------

@@ -23,6 +23,7 @@ All notable changes to this project will be documented in this file.
 - Added pirflow command-line entry point (#47)
 - Added initial test suite and CI workflow (#48)
 - Added GitHub Actions CI for automated tests (#51)
+- Added initial documentation (#49)
 
 ### Changed
 - Created a dedicated configuration directory (#19)

@@ -31,7 +31,7 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[test]"
 ```
 
-Copy or edit `configs/configuration.yaml` for your local CFD flowfield, mesh,
+Copy or edit `configs/configuration.yaml` for your local CFD flowfield, geometry,
 sample, model, and result paths. Keep personal paths out of commits.
 
 ## Making Changes

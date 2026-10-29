@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: MIT
+
 import numpy as np
+
+from pirflow.utils.randomness import RANDOM_SEED
 
 def create_split_indices(number_of_points, params):
     """Create shuffled training, validation, and test indices.
@@ -16,9 +19,6 @@ def create_split_indices(number_of_points, params):
     dict
         Training, validation, and test indices. 
     """
-
-    # Seed for permutation
-    seed = params["seed"]
 
     split_config = params["dataset"]
     # Get percentages in an array
@@ -65,7 +65,7 @@ def create_split_indices(number_of_points, params):
         subset_sizes[2] += 1 
 
     # Get shuffled indices
-    rng = np.random.default_rng(seed)
+    rng = np.random.default_rng(RANDOM_SEED)
     shuffled_indices = rng.permutation(number_of_points)
 
     train_end = subset_sizes[0]

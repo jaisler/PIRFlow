@@ -6,31 +6,22 @@
 paths: 
   # In:
   flow: /path/to/flow/directory
-  mesh: /path/to/mesh/directory
+  geometry: /path/to/geometry/directory
   observations: /path/to/observations/directory 
   # Out:
   results: /path/to/results/directory
   samples: /path/to/samples/directory
   model: /path/to/model/directory
 
-# Name
-# ----
-name: afrl_scramjet
-
-# Geometry
-# --------
-geometry:
-  dimension: 2
-
-# Random number generation
-# ------------------------
-seed: 1234
+# Spatial dimension
+# -----------------
+dimension: 2
 
 # Files
 # -----
 files:
   flowfield: flow.vtu        # Must be a vtk file
-  mesh: afrl2d.geo           # Must be a gmsh file
+  geometry: afrl2d.geo       # Must be a Gmsh geometry file
   model_name: my_model
 
 # Run setup
@@ -39,7 +30,7 @@ run:
   problem: inverse           # Options: forward or inverse
   model: pinn                # Options: supervised or pinn
   equation: rans             # Options: euler or rans
-  device: cpu                # Options: cpu or cuda
+  device: cpu                # Options: cpu, cuda or mps
 
   routines:
     sampling: true

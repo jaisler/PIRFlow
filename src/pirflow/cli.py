@@ -1,11 +1,22 @@
 # SPDX-License-Identifier: MIT
-import argparse
-from pathlib import Path
+"""Command-line interface for running PIRFlow from a YAML configuration."""
 
+import argparse
+
+from pathlib import Path
 from pirflow.runner import run
 
 def main():
-    
+    """Parse command-line arguments and launch the configured workflow.
+
+    The required ``--config`` option specifies the YAML configuration file.
+    Its path is expanded and resolved before being passed to ``run``.
+
+    Returns
+    -------
+    None
+        Executes the workflow using the selected configuration.
+    """
     parser = argparse.ArgumentParser(description="Run PIRFlow.")
     
     parser.add_argument(

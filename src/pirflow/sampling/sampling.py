@@ -5,6 +5,7 @@ import gmsh
 import os
 import pandas as pd
 from pathlib import Path
+from pirflow.utils.randomness import RANDOM_SEED
 
 
 class SamplingData:
@@ -24,7 +25,8 @@ class SamplingData:
 
         self.collpts = collpts
         self.params = params
-        self.dims = params['geometry']['dimension']
+        self.dims = params['dimension']
+        self.rng = np.random.default_rng(RANDOM_SEED)
         # For a collocation object, it is always False
         self.boundary_only = (
             not self.collpts
@@ -463,8 +465,8 @@ class SamplingData:
             Sample coordinates with shape ``(npoin, 2)``.
         """
         pts = np.column_stack([
-            np.random.uniform(xmin, xmax, npoin),
-            np.random.uniform(ymin, ymax, npoin),
+            self.rng.uniform(xmin, xmax, npoin),
+            self.rng.uniform(ymin, ymax, npoin),
             ])
         return pts 
     
@@ -485,14 +487,14 @@ class SamplingData:
         """
         try:
             from scipy.stats import qmc
-            sampler = qmc.LatinHypercube(d=self.dims)   # use d=2 for 2D
+            sampler = qmc.LatinHypercube(d=self.dims, rng=self.rng)
             u01 = sampler.random(n=npoin)              # (N,2) in [0,1)
         except ImportError:
             u01 = np.empty((npoin, self.dims))
             for j in range(self.dims):
-                perm = np.random.permutation(npoin)
+                perm = self.rng.permutation(npoin)
                 # one stratum per point
-                u01[:,j] = (perm + np.random.rand(npoin)) / npoin  
+                u01[:,j] = (perm + self.rng.random(npoin)) / npoin
 
         # Map to physical domain bounds
         pts = np.empty_like(u01)
@@ -517,7 +519,7 @@ class SamplingData:
             Boundary coordinates with shape ``(npoin_bc, 3)``.
         """
 
-        rng = np.random.default_rng(1234)
+        rng = self.rng
         if npoin_bc <= 0:
             raise ValueError("Number of boundary sampling points must be > 0")
 
@@ -525,7 +527,11 @@ class SamplingData:
         # Turn off terminal output from Gmsh
         gmsh.option.setNumber("General.Terminal", 0)
         try:
-            gmsh.open(self.params['paths']['mesh']+'/'+self.params['files']['mesh'])
+            geometry_path = (
+                Path(self.params["paths"]["geometry"])
+                / self.params["files"]["geometry"]
+            )
+            gmsh.open(str(geometry_path))
             gmsh.model.geo.synchronize()
             #gmsh.model.mesh.generate(self.dims)
             # For 1D mesh generation before 2D
@@ -624,7 +630,7 @@ class SamplingData:
             Selected coordinates with three components per point.
         """
 
-        rng = np.random.default_rng(self.params.get('seed', 1234))
+        rng = self.rng
 
         # Compute grad(var) on the mesh
         if var_name not in mesh.array_names:

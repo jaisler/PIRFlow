@@ -5,6 +5,7 @@ from pirflow.io import create_output_directories, load_config
 from pirflow.networks import build_network
 from pirflow.observation import ObservationData, prepare_observation_datasets
 from pirflow.postprocessing import run_flowfield_postprocessing
+from pirflow.utils.randomness import seed_random_generators
 from pirflow.pinn import (
     build_pinn_model, 
     evaluate_forward_test_dataset, 
@@ -38,8 +39,22 @@ def run(config_path) -> None:
     # Configuration file
     params = load_config(config_path)
 
+    # Reset PyTorch random generators using the shared seed.
+    seed_random_generators()
+
     # Create output directories
     create_output_directories(params)
+
+    # Problem definition
+    problem = params["run"].get("problem", "forward").lower()
+
+    # model
+    model = params["run"].get("model", "supervised").lower()
+
+    if (problem == "inverse" and model == "supervised"):
+        raise ValueError(
+            "Inverse problems require run.model='pinn'."
+        )
 
     # Sample or read collocation points if pinn model
     # Required for both forward and inverse problems.
@@ -57,9 +72,6 @@ def run(config_path) -> None:
 
     # Build neural network
     network = build_network(params)
-
-    # Problem definition
-    problem = params["run"].get("problem", "forward").lower()
 
     # Boundary config for inverse problem
     boundary_config = params.get("identification", {}).get(

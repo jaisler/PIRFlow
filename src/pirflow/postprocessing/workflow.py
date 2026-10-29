@@ -54,7 +54,7 @@ def run_flowfield_postprocessing(model, params):
         params=params,
     )
 
-    postprocessor.run(prefix=params["name"])
+    postprocessor.run()
 
     do_plotting = (params["post_processing"].get("plot", True))
 
