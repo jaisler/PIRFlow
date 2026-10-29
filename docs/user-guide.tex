@@ -38,7 +38,7 @@
   belowskip=0.7em
 }
 
-\title{PIRFlow\\\large User Guide}
+\title{PIRFlow\\~\\\large User Guide\\ Version 0.1.0}
 \author{João Isler}
 \date{}
 
@@ -100,7 +100,7 @@ data, and optionally post-processes the full CFD mesh.
 \subsection{Directories and filenames}
 
 The \code{paths} section contains directories. The \code{files} section selects
-the CFD file, Gmsh geometry, and checkpoint basename. \code{paths.geometry}
+the CFD file, Gmsh geometry, and checkpoint basename. The \code{paths.geometry}
 selects the Gmsh geometry directory and \code{files.geometry} its filename.
 Replace these sections in your local copy with one entry per key. For example,
 with commands run from the repository root:
@@ -120,22 +120,19 @@ files:
   flowfield: flow.vtu
   geometry: domain.geo
   model_name: reconstruction
-
-name: my_case
 \end{lstlisting}
 
 This reads \code{/path/to/case/cfd/flow.vtu} and, when boundary sampling is
 requested, \code{/path/to/case/geometry/domain.geo}. Note that, the code only accepts 
 VTK files for the flow field and Gmsh files for the geometry. A saved checkpoint becomes
-\code{model/my_case/reconstruction.pth}. \code{name} supplies the comparison-file prefix,
-giving \code{results/my_case/my_case_comparison.vtk} during post-processing.
+\code{model/my_case/reconstruction.pth}. 
 
 Relative paths are resolved from the directory where you launch PIRFlow,
 even when the YAML file lives in \code{configs/}. Absolute paths are also accepted.
 PIRFlow creates the \code{results}, \code{samples}, and \code{model} directories, in 
-case theese files do not exist. Input files must already exist. Separate output 
-directories by case to keep saved samples and checkpoints associated with the 
-correct geometry and settings. Keep local paths and datasets out of commits.
+case these directories do not exist. Input files must already exist. A good practice
+would be to separate output directories by case to keep saved samples and 
+checkpoints associated with the correct geometry and settings. 
 
 \subsection{CFD fields, coordinates, and units}
 
@@ -252,9 +249,10 @@ Reconstruct from observations with physical constraints &
   \code{mlp} \\
 \end{longtable}
 
-Set \code{geometry.dimension} to \code{2}. Choose \code{run.equation: euler} 
-for \code{rho, u, v, p}, or \code{rans} to include the turbulent-viscosity 
-field \code{mut} and viscous/thermal terms.
+Choose \code{run.equation: euler} for \code{rho, u, v, p}, or \code{rans} to include 
+the turbulent-viscosity field \code{mut} and viscous/thermal terms. The 
+\code{dimension} must be set to \code{2}, since the current framwork only supports 
+two-dimensional flows. 
 
 \subsection{Match the network to the problem}
 
