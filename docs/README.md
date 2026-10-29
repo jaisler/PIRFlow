@@ -1,5 +1,7 @@
 # PIRFlow User Guide
 
+Version 0.1.0
+
 PIRFlow (Physics-Informed Reconstruction of Flow fields) reconstructs steady,
 two-dimensional compressible flow fields using PyTorch. Forward runs learn
 from sampled CFD fields and inverse runs learn from observations and optional
@@ -70,29 +72,27 @@ files:
   flowfield: flow.vtu
   geometry: domain.geo
   model_name: reconstruction
-
-name: my_case
 ```
 
 This reads `/path/to/case/cfd/flow.vtu` and, when boundary sampling is
 requested, `/path/to/case/geometry/domain.geo`. PIRFlow accepts VTK files for
 the flow field and Gmsh files for the geometry. A saved checkpoint becomes
-`model/my_case/reconstruction.pth`. `name` supplies the comparison-file prefix,
-giving `results/my_case/my_case_comparison.vtk` during post-processing.
+`model/my_case/reconstruction.pth`.
 
 Relative paths are resolved from the directory where you launch PIRFlow,
 even when the YAML file lives in `configs/`. Absolute paths are also accepted.
 PIRFlow creates the `results`, `samples`, and `model` directories if they do
 not exist. Input files must already exist. Separate output directories by case
 to keep saved samples and checkpoints associated with the correct geometry
-and settings. Keep local paths and datasets out of commits.
+and settings.
 
 ### CFD fields, coordinates, and units
 
 Use a VTK dataset such as `flow.vtu` containing the computational mesh and
 flow solution. The current workflow reconstructs the two velocity components
 in the x-y plane. The table below lists the CFD array names, corresponding
-model variables, and physical units:
+model variables, and example physical units. Keep units consistent with your
+setup and physical reference scales.
 
 | CFD array | Model variable | Content | Unit |
 | --- | --- | --- | --- |
@@ -149,9 +149,10 @@ configurations are:
 | Fit CFD with physical constraints | `forward` | `pinn` | `euler` or `rans` | `mlp` or `gnn` |
 | Reconstruct from observations with physical constraints | `inverse` | `pinn` | `euler` or `rans` | `mlp` |
 
-Set `geometry.dimension` to `2`. Choose `run.equation: euler` for
-`rho, u, v, p`, or `rans` to include the turbulent-viscosity field `mut`
-and viscous/thermal terms.
+Choose `run.equation: euler` for `rho, u, v, p`, or `rans` to include
+the turbulent-viscosity field `mut` and viscous/thermal terms. Set the top-level
+`dimension` to `2`, since the current framework only supports two-dimensional
+flows.
 
 ### Match the network to the problem
 
@@ -170,9 +171,7 @@ marker features are not implemented yet.
 
 Set `run.device` to `cpu` for CPU execution, `cuda` for an available NVIDIA
 GPU, or `mps` for GPU acceleration on compatible Macs. PIRFlow automatically
-falls back to `cpu` when CUDA is requested but unavailable. For `mps` and
-other PyTorch device strings, the selected device must be available and
-support the operations used; PIRFlow does not provide an automatic CPU fallback.
+falls back to `cpu` when CUDA or MPS is requested but unavailable.
 
 ### Sample points and split data
 
@@ -300,7 +299,7 @@ still uses the CFD mesh to define the domain.
 | --- | --- |
 | `paths.samples` | `data_points.npz` for forward data, `boundary_points.npz` for inverse boundary data, and `collocation_points.npz` for PINN runs, as applicable. |
 | `paths.model` | `<files.model_name>.pth` when training with `run.checkpoint.save_model: true`. |
-| `paths.results` | Plots and `<name>_comparison.vtk` when full-mesh post-processing is enabled. The VTK file includes reference, predicted, and error fields. |
+| `paths.results` | Plots and `flowfield_comparison.vtk` when full-mesh post-processing is enabled. The VTK file includes reference, predicted, and error fields. |
 | Terminal | Training progress and evaluation metrics: MSE, RMSE, relative L2 error, and R². Mesh metrics use nondimensional fields. |
 
 Relative L2 is reported as `NaN` when reference RMS is at or below the metric
