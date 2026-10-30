@@ -90,9 +90,21 @@ and settings.
 
 Use a VTK dataset such as `flow.vtu` containing the computational mesh and
 flow solution. The current workflow reconstructs the two velocity components
-in the x-y plane. The table below lists the CFD array names, corresponding
-model variables, and example physical units. Keep units consistent with your
-setup and physical reference scales.
+in the x-y plane. Configure the solver's array names and components once under
+the top-level `cfd` section. Sampling, synthetic Schlieren observations, and
+post-processing share this mapping. The table below shows example CFD array
+names, corresponding model variables, and physical units. Keep units
+consistent with your setup and physical reference scales.
+
+```yaml
+cfd:
+  # Order: rho, p, u, v, mut (omit mut for Euler)
+  fields: [Density, Pressure, Velocity, Velocity, Eddy_Viscosity]
+  components: [0, 0, 0, 1, 0]
+```
+
+Use component `0` for scalar arrays. Velocity components can also come from
+separate scalar arrays by configuring their names and using component `0`.
 
 | CFD array | Model variable | Content | Unit |
 | --- | --- | --- | --- |
@@ -115,15 +127,15 @@ turbulent viscosity.
 ### Inputs required by each stage
 
 - **Interior sampling:** reads the CFD mesh to locate the domain, including for
-  inverse PINN collocation points. Gradient sampling also needs the array named
-  by `sampling.gradient_sampling.variable`.
+  inverse PINN collocation points. Gradient sampling uses the density-gradient
+  magnitude from the first array in `cfd.fields`.
 - **Boundary sampling:** reads the Gmsh geometry when a boundary count is
   positive. Its physical group names must match `sampling.boundaries.names`
   exactly, and its geometry must align with the CFD mesh.
 - **Inverse observations:** velocity and pressure CSVs are read from
   `paths.observations` only when their modalities are enabled. Synthetic
   Schlieren uses the CFD density field; its array name is set by
-  `identification.observations.schlieren.density_name`. See the inverse
+  the density entry in `cfd.fields`. See the inverse
   observations section for filenames and CSV columns.
 - **Saved samples:** `run.routines.sampling: false` loads the relevant NPZ
   files from `paths.samples`. It does not disable observation loading,
@@ -203,9 +215,9 @@ Boundary counts follow the order of `names`; both count lists must have that
 same length. A zero count skips that boundary. Interior counts must be positive
 for fresh forward-data and collocation sampling. `gradient: 0` disables extra
 gradient points. `method` accepts `random` or `lhs` (Latin hypercube sampling).
-Under `gradient_sampling`, `variable` selects the CFD sensor, `pool_factor`
-sets the candidate-pool multiplier, and `alpha` controls preference for larger
-gradients. Domain filtering can reduce the number of retained points.
+Under `gradient_sampling`, `pool_factor` sets the candidate-pool multiplier,
+and `alpha` controls preference for larger density-gradient magnitudes.
+Domain filtering can reduce the number of retained points.
 
 Set `dataset.p_training_data`, `p_validation_data`, and `p_test_data` to
 nonnegative percentages summing to 100, for example 80, 10, and 10. Each dataset
@@ -253,17 +265,16 @@ losses are printed.
 Set `run.checkpoint.save_model: true` to save after training, or
 `run.checkpoint.load_model: true` to load the configured checkpoint before
 training/evaluation. Set `run.routines.postprocessing: true` for mesh metrics
-and VTK export. In `post_processing`, keep `fields`, `components`, `latex`,
-`colormaps`, and `scales` aligned in the order `rho, p, u, v` (and `mut` for
-RANS). For the standard CFD arrays, use:
+and VTK export. Keep the `post_processing` lists `latex`, `colormaps`, and
+`scales` aligned with `cfd.fields` and `cfd.components` in the order
+`rho, p, u, v` (and `mut` for RANS). For Euler, remove the final
+turbulent-viscosity entry from every aligned list.
 
-```yaml
-post_processing:
-  fields: [Density, Pressure, Velocity, Velocity, Eddy_Viscosity]
-  components: [0, 0, 0, 1, 0]
-```
-
-For Euler, remove the final turbulent-viscosity entry from every aligned list.
+For older configurations, move `post_processing.fields` and
+`post_processing.components` into `cfd`, and remove
+`identification.observations.schlieren.density_name` and
+`sampling.gradient_sampling.variable`. Both Schlieren generation and gradient
+sampling use the configured density array.
 
 ## Inverse observations
 

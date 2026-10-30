@@ -173,6 +173,21 @@ the model variables, and possible physical units accordanly with your setup.
   Pa\,s \\
 \end{longtable}
 
+Configure the solver's array names and components once under the top-level
+\code{cfd} section. Sampling, synthetic Schlieren observations, and
+post-processing share this mapping:
+
+\begin{lstlisting}
+cfd:
+  # Order: rho, p, u, v, mut (omit mut for Euler)
+  fields: [Density, Pressure, Velocity, Velocity, Eddy_Viscosity]
+  components: [0, 0, 0, 1, 0]
+\end{lstlisting}
+
+Use component \code{0} for scalar arrays. Velocity components can also come
+from separate scalar arrays by configuring their names and using component
+\code{0}.
+
 Forward Euler sampling requires the first three arrays. Forward RANS sampling
 also requires \code{Eddy_Viscosity}. Inverse boundary sampling reads the fields
 selected for each boundary. 
@@ -188,15 +203,15 @@ turbulent viscosity.
 
 \begin{itemize}
   \item \textbf{Interior sampling:} reads the CFD mesh to locate the domain, including for
-  inverse PINN collocation points. Gradient sampling also needs the array named
-  by \code{sampling.gradient_sampling.variable}.
+  inverse PINN collocation points. Gradient sampling uses the density-gradient
+  magnitude from the first array in \code{cfd.fields}.
   \item \textbf{Boundary sampling:} reads the Gmsh geometry when a boundary count is
   positive. Its physical group names must match \code{sampling.boundaries.names}
   exactly, and its geometry must align with the CFD mesh.
   \item \textbf{Inverse observations:} velocity and pressure CSVs are read from
   \code{paths.observations} only when their modalities are enabled. Synthetic
   Schlieren uses the CFD density field; its array name is set by
-  \code{identification.observations.schlieren.density_name}. See the inverse
+  the density entry in \code{cfd.fields}. See the inverse
   observations section for filenames and CSV columns.
   \item \textbf{Saved samples:} \code{run.routines.sampling: false} loads the 
   relevant NPZ files from \code{paths.samples}. It does not disable observation 
@@ -304,10 +319,10 @@ Boundary counts follow the order of \code{names}; both count lists must have tha
 same length. A zero count skips that boundary. Interior counts must be positive
 for fresh forward-data and collocation sampling. If \code{gradient: 0}, this 
 disables extra gradient points. \code{method} accepts \code{random} or \code{lhs} 
-(Latin hypercube sampling). Under \code{gradient_sampling}, \code{variable} 
-selects the CFD sensor, \code{pool_factor} sets the candidate-pool multiplier, 
-and \code{alpha} controls preference for larger gradients. Domain filtering can 
-reduce the number of retained points.
+(Latin hypercube sampling). Under \code{gradient_sampling}, \code{pool_factor}
+sets the candidate-pool multiplier, and \code{alpha} controls preference for
+larger density-gradient magnitudes. Domain filtering can reduce the number of
+retained points.
 
 Set \code{dataset.p_training_data}, \code{p_validation_data}, and \code{p_test_data} to
 nonnegative percentages summing to 100, for example 80, 10, and 10. Each dataset
@@ -378,17 +393,17 @@ training losses are printed.
 Set \code{run.checkpoint.save_model: true} to save after training, or
 \code{run.checkpoint.load_model: true} to load the configured checkpoint before
 training/evaluation. Set \code{run.routines.postprocessing: true} for mesh metrics
-and VTK export. In \code{post_processing}, keep \code{fields}, \code{components}, 
-\code{latex}, \code{colormaps}, and \code{scales} aligned in the order 
-\code{rho, p, u, v} (and \code{mut} for RANS). For the standard CFD arrays, use:
+and VTK export. Keep the \code{post_processing} lists \code{colorbar_labels},
+\code{colormaps}, and \code{scales} aligned with \code{cfd.fields} and
+\code{cfd.components} in the order \code{rho, p, u, v} (and \code{mut} for
+RANS). For Euler, remove the final turbulent-viscosity entry from every aligned
+list.
 
-\begin{lstlisting}
-post_processing:
-  fields: [Density, Pressure, Velocity, Velocity, Eddy_Viscosity]
-  components: [0, 0, 0, 1, 0]
-\end{lstlisting}
-
-For Euler, remove the final turbulent-viscosity entry from every aligned list.
+For older configurations, move \code{post_processing.fields} and
+\code{post_processing.components} into \code{cfd}, and remove
+\code{identification.observations.schlieren.density_name} and
+\code{sampling.gradient_sampling.variable}. Both Schlieren generation and
+gradient sampling use the configured density array.
 
 \section{Inverse observations}
 \label{sec:observations}
