@@ -24,6 +24,19 @@ files:
   geometry: afrl2d.geo       # Must be a Gmsh geometry file
   model_name: my_model
 
+# CFD array mapping (shared by sampling, observations, and post-processing)
+# -------------------------------------------------------------------------
+cfd:
+  # Order: rho, p, u, v, mut. Omit mut for Euler.
+  fields:
+    - Density
+    - Pressure
+    - Velocity
+    - Velocity
+    - Eddy_Viscosity
+
+  components: [0, 0, 0, 1, 0]  # Use 0 for scalar arrays
+
 # Run setup
 # ---------
 run:
@@ -50,11 +63,10 @@ identification:
     
     schlieren: 
       enabled: true
-      grad_type: grad_x      # Options: grad_x, grad_y, magnitude
-      density_name: Density  # Density name form CFD framework
+      grad_type: grad_x            # Options: grad_x, grad_y, magnitude
       
       image:
-        resolution: [512, 128]        # width, height
+        resolution: [512, 128]     # width, height
         supersampling: 2
 
       rendering:
@@ -71,7 +83,7 @@ identification:
 
     velocity_profiles:
       enabled: true
-      filename: velocity_profile   # Must be a csv file. velocity_profile_u_3.csv
+      filename: velocity_profile   # Must be a csv file.
       n_files: 8
 
     pressure_taps:
@@ -84,19 +96,19 @@ identification:
         - inlet
         - bottom
         - top
-      fields:                        # Observed CFD fields at each boundary
-        inlet: [rho, u, v, p]        # Add mut only if known at the inlet
+      fields:                      # Observed CFD fields at each boundary
+        inlet: [rho, u, v, p]      # Add mut only if known at the inlet
         bottom: [u, v]
         top: [u, v]
 
 # Neural network
 # --------------
 network:
-  architecture: mlp          # Options: mlp or gnn 
+  architecture: mlp                # Options: mlp or gnn 
 
   mlp:
     layers: [2, 32, 32, 32, 5] 
-    activation: tanh         # Options: tanh, sigmoid, sin, softplus, silu/swish or gelu
+    activation: tanh               # Options: tanh, sigmoid, sin, softplus, silu/swish or gelu
 
     dropout:
       probability: 0.0
@@ -104,7 +116,7 @@ network:
 
   gnn:
     latent_dim: 8
-    activation: tanh         # Options: tanh, sigmoid, sin, softplus, silu/swish or gelu
+    activation: tanh               # Options: tanh, sigmoid, sin, softplus, silu/swish or gelu
     neighbors: 4             
 
     attributes:
@@ -116,13 +128,13 @@ network:
 
     processor:
       message_layers: 2  
-      aggregation: sum       # Options: sum, max or mean
+      aggregation: sum             # Options: sum, max or mean
       residual: true
 
 # Sampling
 # --------
 sampling:
-  method: lhs                # Options: random or lhs
+  method: lhs                      # Options: random or lhs
 
   boundaries:
     names:
@@ -141,8 +153,7 @@ sampling:
     gradient: 1700
     boundary: [40, 260, 40, 160]
 
-  gradient_sampling:
-    variable: Density
+  gradient_sampling:              # Based on the CFD density-gradient magnitude
     pool_factor: 8
     alpha: 1.4
 
@@ -225,21 +236,12 @@ physics:
 post_processing:
   error_type: abs_error_01  # Options: abs_error_01
 
-  fields: # from CFD
-    - Density
-    - Pressure
-    - Velocity
-    - Velocity
-    - Eddy_Viscosity
-
-  latex:
+  colorbar_labels:
     - $\rho$ $[kg/m^{3}]$
     - $p$ $[Pa]$
     - $u$ $[m/s]$
     - $v$ $[m/s]$
     - $\hat{\mu}_{t}$ $[kg/m \cdot s]$ 
-
-  components: [0, 0, 0, 1, 0]
 
   colormaps:
     - bwr

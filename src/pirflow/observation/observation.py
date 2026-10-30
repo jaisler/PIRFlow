@@ -24,6 +24,7 @@ class ObservationData:
             PIRFlow configuration.
         """
 
+        self.params = params
         self.dims = params["dimension"]
 
         # Observation config
@@ -145,7 +146,7 @@ class ObservationData:
             file_path=file_path,
             image=schlieren_config["image"],
             rendering=schlieren_config["rendering"],
-            density_name=schlieren_config["density_name"],
+            density_name=self.params["cfd"]["fields"][0],
             grad_type=schlieren_config["grad_type"],
             dims=self.dims,
         )

@@ -37,6 +37,7 @@ All notable changes to this project will be documented in this file.
 - Refactored the training pipeline (#36)
 - Cleaned up the main workflow (#37)
 - Enabled plotting for GPU runs (#50)
+- Refactor CFD array reading (#53)
 
 ### Removed
 - Removed collocation dataset definition (#32)
