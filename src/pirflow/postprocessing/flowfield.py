@@ -145,7 +145,7 @@ class FlowFieldPostProcessor:
         """
 
         equation = self.params["run"]["equation"]
-
+        
         if equation == "euler":
             variables = ["rho", "p", "u", "v"]
         elif equation == "rans":
@@ -153,71 +153,34 @@ class FlowFieldPostProcessor:
         else:
             raise ValueError(f"Unknown equation: {equation}.")
 
-        if "post_processing" not in self.params:
-            raise KeyError(
-                "params does not contain 'post_processing'. "
-                "The reference VTK field names must be provided in "
-                "params['post_processing']['fields'] and "
-                "params['post_processing']['components']."
-            )
-
-        plot_cfg = self.params["post_processing"]
-
-        if "fields" not in plot_cfg:
-            raise KeyError("params['post_processing'] does not contain 'fields'.")
-
-        if "components" not in plot_cfg:
-            raise KeyError("params['post_processing'] does not contain 'components'.")
-
-        fields = plot_cfg["fields"]
-        components = plot_cfg["components"]
-
-        if len(fields) != len(components):
+        fields = self.params["cfd"]["fields"]
+        components = self.params["cfd"]["components"]
+        if len(fields) != len(variables) or len(components) != len(variables):
             raise ValueError(
-                "params['post_processing']['fields'] and "
-                "params['post_processing']['components'] must have the same length. "
-                f"Got {len(fields)} fields and {len(components)} components."
+                "cfd.fields and cfd.components must each contain "
+                f"{len(variables)} entries in the order {', '.join(variables)}."
             )
 
-        if len(fields) < len(variables):
-            raise ValueError(
-                "Not enough reference fields were provided in params['post_processing']. "
-                f"Expected at least {len(variables)} fields for equation "
-                f"{equation}, but got {len(fields)}."
-            )
+        for variable, name, component in zip(variables, fields, components):
+            values = np.asarray(self.flowfield.point_data[name])
+            
+            # Determine how many components the CFD array contains.
+            ncomponents = 1 if values.ndim == 1 else values.shape[1]
 
-        for i in range(len(variables)):
-            variable = variables[i]
-            field_name = fields[i]
-            component = components[i]
-
-            # Get data from flow field
-            data = np.asarray(self.flowfield.point_data[field_name])
-
-            # Scalar field, e.g. Density or Pressure: shape (N,)
-            if data.ndim == 1:
-                reference_value = data
-
-            # Vector field, e.g. Velocity: shape (N, n_components)
-            elif data.ndim == 2:
-                if component >= data.shape[1]:
-                    raise ValueError(
-                        f"Field '{field_name}' has {data.shape[1]} components, "
-                        f"but component {component} was requested."
-                    )
-
-                reference_value = data[:, component]
-
-            else:
+            # Check that the requested component exists.
+            if component < 0 or component >= ncomponents:
                 raise ValueError(
-                    f"Field '{field_name}' has unsupported shape {data.shape}."
+                    f"CFD array '{name}' has {ncomponents} components, "
+                    f"but component {component} was requested."
                 )
 
-            # Convert to 1D NumPy array
-            reference_value = self.to_numpy_1d(reference_value)
-            # Store value
-            self.reference_fields[variable] = reference_value
+            # For vector arrays, extract the requested component.
+            if values.ndim == 2:
+                values = values[:, component]
 
+            # Store the field as a one-dimensional array.
+            self.reference_fields[variable] = self.to_numpy_1d(values)
+            
     def compute_error_fields(self):
         """Compute pointwise raw, absolute, relative, and scaled errors.
 

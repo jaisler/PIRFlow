@@ -126,7 +126,7 @@ def generate_synthetic_schlieren(
     file_path,
     image,
     rendering,
-    density_name="rho",
+    density_name,
     grad_type="magnitude",
     dims=2,
 ):
@@ -142,7 +142,7 @@ def generate_synthetic_schlieren(
     rendering : dict
         Rendering settings containing ``blur_sigma_pixels`` and
         ``normalization_percentile``.
-    density_name : str, optional
+    density_name : str
         Name of the CFD density field.
     grad_type : {"grad_x", "grad_y", "magnitude"}
         Density-gradient quantity used as the Schlieren signal.

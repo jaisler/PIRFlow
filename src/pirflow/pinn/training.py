@@ -70,7 +70,7 @@ def train_model(model, params):
     if params['run']['checkpoint']['save_model']:
         model.save_model(
             params['paths']['model'], 
-            params['files']['model_name']
+            params['run']['checkpoint']['name']
         )
 
     # Plot history training
