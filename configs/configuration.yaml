@@ -22,7 +22,6 @@ dimension: 2
 files:
   flowfield: flow.vtu        # Must be a vtk file
   geometry: afrl2d.geo       # Must be a Gmsh geometry file
-  model_name: my_model
 
 # CFD array mapping (shared by sampling, observations, and post-processing)
 # -------------------------------------------------------------------------
@@ -50,6 +49,7 @@ run:
     postprocessing: true
 
   checkpoint:
+    name: my_model          # Checkpoint basename; .pth is added automatically
     load_model: false
     save_model: false
 

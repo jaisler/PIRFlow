@@ -475,7 +475,7 @@ class PhysicsInformedNN(nn.Module):
         # Load model
         if params['run']['checkpoint']['load_model']:
             self.load_model(params['paths']['model'], 
-                            params['files']['model_name'])
+                            params['run']['checkpoint']['name'])
 
         # Verbose
         self.verbose = params['run'].get("verbose", False)

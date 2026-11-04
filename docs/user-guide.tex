@@ -100,10 +100,11 @@ data, and optionally post-processes the full CFD mesh.
 \subsection{Directories and filenames}
 
 The \code{paths} section contains directories. The \code{files} section selects
-the CFD file, Gmsh geometry, and checkpoint basename. The \code{paths.geometry}
-selects the Gmsh geometry directory and \code{files.geometry} its filename.
-Replace these sections in your local copy with one entry per key. For example,
-with commands run from the repository root:
+the CFD file and Gmsh geometry. The \code{run.checkpoint.name} entry sets the
+checkpoint basename without the \code{.pth} extension. The \code{paths.geometry}
+entry selects the Gmsh geometry directory and \code{files.geometry} its filename.
+Update the corresponding entries in your local copy with one entry per key.
+For example, with commands run from the repository root:
 
 \begin{lstlisting}
 paths:
@@ -119,7 +120,10 @@ paths:
 files:
   flowfield: flow.vtu
   geometry: domain.geo
-  model_name: reconstruction
+
+run:
+  checkpoint:
+    name: reconstruction
 \end{lstlisting}
 
 This reads \code{/path/to/case/cfd/flow.vtu} and, when boundary sampling is
@@ -461,7 +465,7 @@ mesh to define the domain.
   inverse boundary data, and \code{collocation_points.npz} for PINN runs,
   as applicable. \\
 \code{paths.model} &
-  \code{<files.model_name>.pth} when training with
+  \code{<run.checkpoint.name>.pth} when training with
   \code{run.checkpoint.save_model: true}. \\
 \code{paths.results} &
   Plots and \code{<name>_comparison.vtk} when full-mesh post-processing is

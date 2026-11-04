@@ -52,10 +52,11 @@ data, and optionally post-processes the full CFD mesh.
 ### Directories and filenames
 
 The `paths` section contains directories. The `files` section selects the CFD
-file, Gmsh geometry, and checkpoint basename. `paths.geometry` selects the
-Gmsh geometry directory and `files.geometry` its filename. Replace these
-sections in your local copy with one entry per key. For example, with commands
-run from the repository root:
+file and Gmsh geometry. `run.checkpoint.name` sets the checkpoint basename
+without the `.pth` extension. `paths.geometry` selects the Gmsh geometry
+directory and `files.geometry` its filename. Update the corresponding entries
+in your local copy with one entry per key. For example, with commands run from
+the repository root:
 
 ```yaml
 paths:
@@ -71,7 +72,10 @@ paths:
 files:
   flowfield: flow.vtu
   geometry: domain.geo
-  model_name: reconstruction
+
+run:
+  checkpoint:
+    name: reconstruction
 ```
 
 This reads `/path/to/case/cfd/flow.vtu` and, when boundary sampling is
@@ -309,7 +313,7 @@ still uses the CFD mesh to define the domain.
 | Location | Contents |
 | --- | --- |
 | `paths.samples` | `data_points.npz` for forward data, `boundary_points.npz` for inverse boundary data, and `collocation_points.npz` for PINN runs, as applicable. |
-| `paths.model` | `<files.model_name>.pth` when training with `run.checkpoint.save_model: true`. |
+| `paths.model` | `<run.checkpoint.name>.pth` when training with `run.checkpoint.save_model: true`. |
 | `paths.results` | Plots and `flowfield_comparison.vtk` when full-mesh post-processing is enabled. The VTK file includes reference, predicted, and error fields. |
 | Terminal | Training progress and evaluation metrics: MSE, RMSE, relative L2 error, and R². Mesh metrics use nondimensional fields. |
 
