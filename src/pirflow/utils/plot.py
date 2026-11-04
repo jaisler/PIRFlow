@@ -698,7 +698,7 @@ def plot_field_pyvista(
     mesh : pyvista.DataSet
         Mesh used for rendering.
     ifield : int
-        Field index in the post-processing configuration.
+        Field index in the shared CFD configuration and plotting lists.
     params : dict
         PIRFlow configuration.
     values : array_like or None
@@ -720,14 +720,14 @@ def plot_field_pyvista(
 
     pf = params["post_processing"]
 
-    field = pf["fields"][ifield]
-    comp = pf["components"][ifield]
+    field = params["cfd"]["fields"][ifield]
+    comp = params["cfd"]["components"][ifield]
 
     if cmap is None:
         cmap = pf["colormaps"][ifield]
 
     if clabel is None:
-        clabel = pf["latex"][ifield]
+        clabel = pf["colorbar_labels"][ifield]
 
     if clim is None:
         scale = np.asarray(pf["scales"][ifield], dtype=float)
@@ -874,7 +874,7 @@ def plot_simulation_flow_pyvista(mesh, params):
         PDF renderings are written to disk.
     """
 
-    nfields = len(params["post_processing"]["fields"])
+    nfields = len(params["cfd"]["fields"])
     for ifield in range(nfields):
         plot_field_pyvista(
             mesh,
@@ -904,17 +904,7 @@ def plot_predicted_flow_pyvista(mesh, predicted_fields, params):
     """
 
     variables = get_flow_variables(params)
-    nfields = len(params["post_processing"]["fields"])
-
-    if nfields > len(variables):
-        raise ValueError(
-            f"params['post_processing']['fields'] has {nfields} fields, "
-            f"but equation {params['run']['equation']} only defines "
-            f"{len(variables)} variables."
-        )
-
-    for ifield in range(nfields):
-        variable = variables[ifield]
+    for ifield, variable in enumerate(variables):
 
         if variable not in predicted_fields:
             raise KeyError(
@@ -971,14 +961,6 @@ def plot_error_flow_pyvista(
         )
 
     variables = get_flow_variables(params)
-    nfields = len(params["post_processing"]["fields"])
-
-    if nfields > len(variables):
-        raise ValueError(
-            f"params['post_processing']['fields'] has {nfields} fields, "
-            f"but equation {params['run']['equation']} only defines "
-            f"{len(variables)} variables."
-        )
 
     # Labels are defined explicitly because the plotted error fields
     # are scaled and therefore do not use the original field labels.
@@ -990,9 +972,7 @@ def plot_error_flow_pyvista(
         "mut": r"$\widehat{\mu}_{t,\mathrm{error}}$",
     }
 
-    for ifield in range(nfields):
-        # Variable names
-        variable = variables[ifield]
+    for ifield, variable in enumerate(variables):
         # Also created in compute_error_fields
         error_name = f"{variable}_{error_type}"
 
@@ -1032,25 +1012,14 @@ def plot_error_flow_pyvista(
 
 
 def get_flow_variables(params):
-    """Return flow-variable names in post-processing order.
-
-    Parameters
-    ----------
-    params : dict
-        PIRFlow configuration.
-
-    Returns
-    -------
-    list of str
-        Euler or RANS variable names.
-    """
-
+    """Return model variable names in the order used by the plotting lists."""
+    
     equation = params["run"]["equation"]
-
+    
     if equation == "euler":
         return ["rho", "p", "u", "v"]
-
+    
     if equation == "rans":
         return ["rho", "p", "u", "v", "mut"]
-
+    
     raise ValueError(f"Unknown equation: {equation}.")

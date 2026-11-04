@@ -9,11 +9,21 @@ from pirflow.utils.randomness import RANDOM_SEED
 
 
 class SamplingData:
-    """Sample, persist, and expose CFD data or collocation points."""
+    """Sample, save, and load CFD data or collocation points.
+
+    Parameters
+    ----------
+    params : dict
+        PIRFlow configuration defining the input files, CFD fields, and
+        sampling settings.
+    collpts : bool, optional
+        Whether to manage collocation points instead of CFD observations.
+        Default is ``False``.
+    """
 
     # Initialize the class
     def __init__(self, params, collpts=False):
-        """Initialize an empty sampling-data container.
+        """Initialize an empty container for sampled points and fields.
 
         Parameters
         ----------
@@ -21,6 +31,12 @@ class SamplingData:
             PIRFlow configuration.
         collpts : bool, optional
             Whether this container represents collocation points.
+            Default is ``False``.
+
+        Returns
+        -------
+        None
+            Initialize the sampling settings, random generator, and arrays.
         """
 
         self.collpts = collpts
@@ -72,7 +88,9 @@ class SamplingData:
         Returns
         -------
         None
-            Sampled coordinates and fields are stored on this object.
+            Store valid coordinates in ``X`` and point groups in ``pts_in``,
+            ``pts_bc``, and ``pts_grad``. Store CFD observations or zero
+            placeholders for collocation points in the field attributes.
         """
 
         # Reset arrays before sampling
@@ -133,8 +151,7 @@ class SamplingData:
             raise ValueError("Number of sample points must be provided.")        
 
         # Gradient points
-        # Add extra points in regions detected by a sensor
-        # Extra points based on gradient |grad(rho)|
+        # Add extra points based on the density-gradient magnitude |grad(rho)|
         if npgrad > 0:
             grad_cfg = self.params["sampling"]["gradient_sampling"]
 
@@ -143,7 +160,6 @@ class SamplingData:
                 npgrad,
                 xmin, xmax, ymin, ymax, zmin, zmax,
                 base_sampler,
-                var_name=grad_cfg.get("variable", "Density"),
                 pool_factor=grad_cfg.get("pool_factor", 8),
                 alpha=grad_cfg.get("alpha", 1.5)
             )
@@ -209,43 +225,46 @@ class SamplingData:
             self.p = sampled.points[mask] * 0.0
             self.mut = sampled.points[mask] * 0.0
 
-        # The names Density, Velocity, Pressure and Eddy_Viscosity
-        # come from the SU2 it should be given by the user.
-        # It cannot be define directly from here.
-
-        # 1. Understand the _sample_observed_field function
-        # 2. Modify if necessary, adding information on the config file
-
         elif self.boundary_only:
             self.U = np.column_stack([
-                self._sample_observed_field(sampled, "u", "Velocity", 0),
-                self._sample_observed_field(sampled, "v", "Velocity", 1),
+                self._sample_observed_field(sampled, "u", 2),
+                self._sample_observed_field(sampled, "v", 3),
             ])
-            self.rho = self._sample_observed_field(
-                sampled, "rho", "Density"
-            )
-            self.p = self._sample_observed_field(sampled, "p", "Pressure")
-            self.mut = self._sample_observed_field(
-                sampled, "mut", "Eddy_Viscosity"
-            )
+            self.rho = self._sample_observed_field(sampled, "rho", 0)
+            self.p = self._sample_observed_field(sampled, "p", 1)
+            self.mut = self._sample_observed_field(sampled, "mut", 4)
 
         else:
-            self.U = sampled["Velocity"][mask]   # (N,3) or (N,2) if vector
-            self.rho = sampled["Density"][mask]  # (N,) 
-            self.p = sampled["Pressure"][mask]   # (N,) if scalar
+            # CFD entries follow the configured order: rho, p, u, v, mut.
+            self.U = np.column_stack([
+                self._sample_cfd_field(sampled, 2)[mask],
+                self._sample_cfd_field(sampled, 3)[mask],
+            ])
+            self.rho = self._sample_cfd_field(sampled, 0)[mask]
+            self.p = self._sample_cfd_field(sampled, 1)[mask]
 
             # Depending on the equations the eddy viscosity returns
             # zero or the value from the CFD
             if (self.params['run']['equation'] == 'rans'):
-                mut = sampled["Eddy_Viscosity"]
-                #self.mut = mut[mask] / params["mu"]
-                self.mut = mut[mask]
+                self.mut = self._sample_cfd_field(sampled, 4)[mask]
             elif (self.params['run']['equation'] == 'euler'):
                 # Otherwise return zero
                 self.mut = np.zeros((self.X.shape[0], 1), dtype=float)
 
     def _get_sampling_plan(self):
-        """Return interior counts, gradient counts, and boundary/count pairs."""
+        """Return the configured point counts and selected boundaries.
+
+        Returns
+        -------
+        npinner : int
+            Number of interior points. Zero for inverse boundary sampling.
+        npgrad : int
+            Number of points selected using the density gradient. Zero for
+            inverse boundary sampling.
+        boundaries : list of tuple
+            Pairs of ``(boundary_name, point_count)`` in sampling order.
+            Empty when inverse boundary observations are disabled.
+        """
 
         sampling_config = self.params["sampling"]
 
@@ -328,9 +347,18 @@ class SamplingData:
     def _prepare_boundary_observations(self, boundaries):
         """Mark the observed fields at each selected boundary point.
 
-        Missing ``fields`` configuration preserves complete CFD targets.
-        Explicit field lists must cover every selected boundary. Masks have
-        shape ``(N,)`` and follow the sampling order of the boundary points.
+        Parameters
+        ----------
+        boundaries : list of tuple
+            Pairs of ``(boundary_name, point_count)`` in sampling order.
+
+        Returns
+        -------
+        None
+            Store per-point boundary names in ``boundary_names`` and Boolean
+            field masks in ``observed``. Each array has shape ``(N,)``, where
+            ``N`` is the total boundary point count. If no field selection is
+            configured, mark all fields supported by the equation as observed.
         """
 
         # Inverse boundary condition config
@@ -388,10 +416,67 @@ class SamplingData:
             for field in ("rho", "u", "v", "p", "mut")
         }
 
-    def _sample_observed_field(self, sampled, field, array, component=None):
-        """Extract only observed values; unobserved entries remain NaN."""
+    def _sample_cfd_field(self, sampled, ifield):
+        """Read a configured CFD scalar array or vector component.
 
-        # Retrive the if the variable was provided for each boundary and field
+        Parameters
+        ----------
+        sampled : pyvista.DataSet
+            Sampled dataset containing the CFD arrays in its point data.
+        ifield : int
+            Index into ``cfd.fields`` and ``cfd.components``.
+
+        Returns
+        -------
+        numpy.ndarray
+            Selected field values with shape ``(N,)``, where ``N`` is the
+            number of sampled points.
+        """
+
+        # Get CFD array name and component
+        config = self.params["cfd"]
+        name = config["fields"][ifield]
+        component = config["components"][ifield]
+        values = np.asarray(sampled.point_data[name])
+        # Check if the velocity is a vector or a scalar
+        ncomponents = 1 if values.ndim == 1 else values.shape[1]
+
+        # Check that the requested component index is valid.
+        if component < 0 or component >= ncomponents:
+            raise ValueError(
+                f"CFD array '{name}' has {ncomponents} components, "
+                f"but component {component} was requested."
+            )
+
+        if values.ndim == 1:
+            # One value per point: return the entire array.
+            return values
+        else:
+            # Multiple columns: return the requested column for all points.
+            return values[:, component]
+
+    def _sample_observed_field(self, sampled, field, ifield):
+        """Extract observed boundary values for a configured CFD field.
+
+        Parameters
+        ----------
+        sampled : pyvista.DataSet
+            Sampled dataset whose point order matches the observation masks.
+        field : str
+            Model variable used to select the mask in ``observed``:
+            ``"rho"``, ``"p"``, ``"u"``, ``"v"``, or ``"mut"``.
+        ifield : int
+            Index into ``cfd.fields`` and ``cfd.components``.
+
+        Returns
+        -------
+        numpy.ndarray
+            Field values with shape ``(N,)``. Unobserved entries are ``NaN``.
+            If no points observe this field, the CFD array is not read.
+        """
+
+        # Retrieve the observed mask for the field, which indicates
+        # if the variable was provided for each boundary and field
         # {"rho", [True, False, ...]} 
         observed = self.observed[field]
         # Create an array with the same shape, filled with Nan 
@@ -401,7 +486,10 @@ class SamplingData:
             return values
         
         # Extract the unique values of the boundary conditions 
-        names = np.unique(self.boundary_names[observed]).tolist()
+        observed_boundary_names = self.boundary_names[observed]
+        unique_boundary_names = np.unique(observed_boundary_names)
+        names = unique_boundary_names.tolist()
+        array = self.params["cfd"]["fields"][ifield]
 
         if array not in sampled.point_data:
             raise ValueError(
@@ -409,16 +497,7 @@ class SamplingData:
                 f"'{array}' is missing."
             )
 
-        sampled_values = np.asarray(sampled[array])
-        if component is not None:
-            if (
-                sampled_values.ndim != 2
-                or sampled_values.shape[1] <= component
-            ):
-                raise ValueError(
-                    f"CFD array '{array}' has no component '{field}'."
-                )
-            sampled_values = sampled_values[:, component]
+        sampled_values = self._sample_cfd_field(sampled, ifield)
 
         values[observed] = sampled_values.reshape(-1)[observed]
         if not np.all(np.isfinite(values[observed])):
@@ -440,7 +519,8 @@ class SamplingData:
         Returns
         -------
         callable
-            Bound method that generates points.
+            Bound sampling method accepting ``(npoin, xmin, xmax, ymin,
+            ymax)`` and returning coordinates with shape ``(npoin, 2)``.
         """
         if sampling_type == "random":
             return self.sample_random_points
@@ -471,7 +551,7 @@ class SamplingData:
         return pts 
     
     def sample_latin_hypercube(self, npoin, xmin, xmax, ymin, ymax):
-        """Draw Latin-hypercube points in a rectangular domain.
+        """Draw Latin hypercube points in a rectangular domain.
 
         Parameters
         ----------
@@ -511,12 +591,13 @@ class SamplingData:
         phys_name : str
             Name of the physical boundary group.
         npoin_bc : int
-            Number of boundary points to draw.
+            Number of boundary points to draw with replacement.
 
         Returns
         -------
         numpy.ndarray
-            Boundary coordinates with shape ``(npoin_bc, 3)``.
+            Boundary coordinates with shape ``(npoin_bc, 3)``. Repeated
+            coordinates are possible because sampling uses replacement.
         """
 
         rng = self.rng
@@ -599,45 +680,51 @@ class SamplingData:
 
     def sample_based_on_grad(self, mesh, npoin_grad,
         xmin, xmax, ymin, ymax, zmin, zmax, base_sampler,
-        var_name="Density",
         pool_factor=8,
         alpha=1.5,
         eps=1e-12):
-        """Sample mesh points with preference for large field gradients.
+        """Sample mesh points with preference for large density gradients.
 
         Parameters
         ----------
         mesh : pyvista.DataSet
-            CFD mesh containing the selected field.
+            CFD mesh containing the density array named by ``cfd.fields[0]``.
         npoin_grad : int
             Requested number of points.
         xmin, xmax, ymin, ymax, zmin, zmax : float
             Mesh bounds.
         base_sampler : callable
-            Function used to create candidate points.
-        var_name : str, optional
-            Field whose gradient controls sampling.
+            Function accepting ``(npoin, xmin, xmax, ymin, ymax)`` and
+            returning candidate coordinates with shape ``(npoin, 2)``.
         pool_factor : int, optional
-            Candidate count multiplier.
+            Multiplier applied to ``npoin_grad`` to size the candidate pool.
+            Default is ``8``.
         alpha : float, optional
-            Gradient-weight exponent.
+            Exponent controlling preference for larger density gradients.
+            Default is ``1.5``.
         eps : float, optional
-            Small value used in gradient weights.
+            Small positive offset added to the gradient magnitude before
+            computing sampling weights. Default is ``1e-12``.
 
         Returns
         -------
         numpy.ndarray
-            Selected coordinates with three components per point.
+            Selected coordinates with shape ``(N, 3)``, where ``N`` may be
+            smaller than ``npoin_grad`` after filtering. An empty result has
+            shape ``(0, 3)``.
         """
 
         rng = self.rng
+        density_name = self.params["cfd"]["fields"][0]
 
-        # Compute grad(var) on the mesh
-        if var_name not in mesh.array_names:
-            raise ValueError(f"'{var_name}' not found in mesh arrays: \
-                {mesh.array_names}")
+        # Compute grad(rho) on the mesh
+        if density_name not in mesh.array_names:
+            raise ValueError(
+                f"Density array '{density_name}' not found in mesh arrays: "
+                f"{mesh.array_names}"
+            )
 
-        mesh_g = mesh.compute_derivative(scalars=var_name, gradient=True)
+        mesh_g = mesh.compute_derivative(scalars=density_name, gradient=True)
         if "gradient" not in mesh_g.point_data:
             raise RuntimeError("Gradient not found after compute_derivative().")
 
@@ -705,16 +792,19 @@ class SamplingData:
         Parameters
         ----------
         pts_bc : numpy.ndarray
-            Boundary coordinates.
+            Boundary coordinates with shape ``(N, 3)``.
         name : str
-            Boundary name.
+            Boundary name. Recognized names are ``"inlet"``, ``"outlet"``,
+            ``"bottom"``, and ``"top"``, ignoring case.
         xmin, xmax, ymin, ymax : float
             Domain bounds used to scale the displacement.
 
         Returns
         -------
         numpy.ndarray
-            Nudged copy of the boundary coordinates.
+            Copy of the coordinates with shape ``(N, 3)``. Recognized
+            boundaries are shifted inward by a small fraction of the domain
+            size; other boundary names leave the coordinates unchanged.
         """
         pts = pts_bc.copy()
 
@@ -740,7 +830,9 @@ class SamplingData:
         Returns
         -------
         None
-            Data are written to a compressed NumPy file.
+            Write coordinates and point groups to a compressed NumPy file
+            under ``paths.samples``. CFD data also include flow variables
+            and, for inverse boundary samples, observation metadata.
         """
 
         path_data = Path(self.params['paths']['samples'])
@@ -801,8 +893,23 @@ class SamplingData:
 
         Returns
         -------
-        tuple
-            Coordinates, point groups, and optional flow variables.
+        X : numpy.ndarray
+            Sample coordinates with shape ``(N, 3)``.
+        pts_in : numpy.ndarray
+            Interior coordinates with shape ``(N_in, 3)``.
+        pts_bc : numpy.ndarray
+            Boundary coordinates with shape ``(N_bc, 3)``.
+        pts_grad : numpy.ndarray
+            Coordinates selected using the density gradient, with shape
+            ``(N_grad, 3)``.
+        U : numpy.ndarray or None
+            Velocity components, or ``None`` for collocation data.
+        rho : numpy.ndarray or None
+            Density values, or ``None`` for collocation data.
+        p : numpy.ndarray or None
+            Pressure values, or ``None`` for collocation data.
+        mut : numpy.ndarray or None
+            Turbulent viscosity values, or ``None`` for collocation data.
         """
 
         filename = self._get_sample_path()
@@ -881,7 +988,15 @@ class SamplingData:
         return X, pts_in, pts_bc, pts_grad, U, rho, p, mut
 
     def _get_sample_path(self):
-        """Return the sample-file path for this sampling object."""
+        """Return the configured path for this object's sample file.
+
+        Returns
+        -------
+        pathlib.Path
+            Path under ``paths.samples`` ending in ``collocation_points.npz``,
+            ``boundary_points.npz``, or ``data_points.npz``, according to the
+            sampling mode.
+        """
 
         if self.collpts:
             filename = "collocation_points.npz"
@@ -893,12 +1008,18 @@ class SamplingData:
         return Path(self.params["paths"]["samples"]) / filename
 
     def get_boundary_marker(self):
-        """Return the boundary-marker array, when available.
+        """Return the boundary markers assigned to this object.
 
         Returns
         -------
         numpy.ndarray or None
-            Boundary markers associated with sampled points.
+            Stored markers associated with sampled points, or ``None`` if
+            the assigned marker value is ``None``.
+
+        Raises
+        ------
+        AttributeError
+            If ``boundary_marker`` has not been assigned to this object.
         """
         return self.boundary_marker
 
@@ -908,7 +1029,8 @@ class SamplingData:
         Returns
         -------
         numpy.ndarray
-            Interior coordinates.
+            Interior coordinates with shape ``(N_in, 3)``. An empty array has
+            shape ``(0, 3)``.
         """
         return self.pts_in
     
@@ -918,17 +1040,19 @@ class SamplingData:
         Returns
         -------
         numpy.ndarray
-            Boundary coordinates.
+            Boundary coordinates with shape ``(N_bc, 3)``. An empty array has
+            shape ``(0, 3)``.
         """
         return self.pts_bc
 
     def get_pts_grad(self):       
-        """Return sampled gradient-focused points.
+        """Return points selected using the density gradient.
 
         Returns
         -------
         numpy.ndarray
-            Gradient-focused coordinates.
+            Coordinates with shape ``(N_grad, 3)``. An empty array has shape
+            ``(0, 3)``.
         """
         return self.pts_grad
 
@@ -937,8 +1061,9 @@ class SamplingData:
 
         Returns
         -------
-        numpy.ndarray
-            Coordinates retained after mesh masking.
+        numpy.ndarray or None
+            Coordinates retained after mesh masking, with shape ``(N, 3)``.
+            ``None`` before sampling.
         """
         return self.X
 
@@ -948,17 +1073,19 @@ class SamplingData:
         Returns
         -------
         numpy.ndarray or None
-            Density observations, or ``None`` for loaded collocation data.
+            Density observations with shape ``(N,)``, or zero placeholders
+            for collocation points. ``None`` before sampling.
         """
         return self.rho
 
     def get_u(self):       
-        """Return sampled velocity vectors.
+        """Return sampled velocity components.
 
         Returns
         -------
         numpy.ndarray or None
-            Velocity observations, or ``None`` for loaded collocation data.
+            Velocity components for CFD samples, or zero placeholders for
+            collocation points. ``None`` before sampling.
         """
         return self.U
 
@@ -968,16 +1095,19 @@ class SamplingData:
         Returns
         -------
         numpy.ndarray or None
-            Pressure observations, or ``None`` for loaded collocation data.
+            Pressure observations with shape ``(N,)``, or zero placeholders
+            for collocation points. ``None`` before sampling.
         """
         return self.p
     
     def get_mut(self):
-        """Return sampled turbulent-viscosity values.
+        """Return sampled turbulent viscosity values.
 
         Returns
         -------
         numpy.ndarray or None
-            Turbulent viscosity values, or ``None`` when unavailable.
+            Turbulent viscosity observations for RANS data or zero values
+            for forward Euler data and collocation points. Unobserved
+            boundary values are ``NaN``. ``None`` before sampling.
         """
         return self.mut
