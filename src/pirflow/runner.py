@@ -107,15 +107,28 @@ def run(config_path) -> None:
             params,
         )
 
-        # Plot all observation points
-        plot_observation_data(observations, params)
-
         # Plot Schlieren image
-        if params["identification"]["observations"]["schlieren"].get("enabled", False):
+        schlieren_enabled = (
+            params["identification"]["observations"]["schlieren"]
+            .get("enabled", False)
+        )
+        if schlieren_enabled:
             plot_schlieren_image(observations["schlieren"], params)
 
+        # Plot all observation points and prescribed boundary points
+        plot_observation_data(
+            observations, 
+            observation_datasets, 
+            params,
+            data_pnts,
+        )
+
         # Plot observation datasets: training, validation, test
-        plot_prepared_observation_datasets(observation_datasets, params)
+        plot_prepared_observation_datasets(
+            observation_datasets, 
+            params, 
+            cfd_datasets,
+        )
 
     else:
         # CFD data was already provided
@@ -125,7 +138,11 @@ def run(config_path) -> None:
         cfd_datasets = prepare_cfd_datasets(data_pnts, params)
 
         # Plot prepared datasets from sampling
-        plot_prepared_sampling_datasets(cfd_datasets, collocation_dataset, params)
+        plot_prepared_sampling_datasets(
+            cfd_datasets, 
+            collocation_dataset, 
+            params,
+        )
 
     # Build model
     # The model is built with the datasets, but for the inverse problem,
