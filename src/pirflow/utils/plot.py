@@ -86,18 +86,28 @@ def plot_schlieren_image(schlieren, params):
     fig.savefig(output_path / "schlieren_image.pdf", dpi=600)
     plt.close(fig)
 
-def plot_observation_data(observation, params):
-    """Plot the locations of raw observations for all three modalities.
+def plot_observation_data(
+    observation, 
+    observation_datasets, 
+    params, 
+    boundary_data=None,
+):
+    """Plot the locations of available observations and prescribed boundaries.
 
     Parameters
     ----------
     observation : dict
         Raw ``"schlieren"`` and ``"pressure_taps"`` coordinate mappings,
         plus a ``"velocity_profiles"`` list of coordinate mappings.
-        All three modalities are required, each with ``"x"`` and ``"y"``
+        Any combination may be present, each with ``"x"`` and ``"y"``
         coordinates.
+    observation_datasets : dict
+        Prepared observation datasets. All available Schlieren splits are
+        combined for plotting.
     params : dict
         PIRFlow configuration.
+    boundary_data : dict, optional
+        Prescribed boundary coordinates under ``"X"`` from ``get_data_points``.
 
     Returns
     -------
@@ -105,30 +115,57 @@ def plot_observation_data(observation, params):
         ``observation_data.pdf`` is written to the results directory.
     """
 
-    # Note that this function assumes that the user enabled the
-    # Schlieren, velocity profiesl and pressure taps. 
-    # TODO: make it general so that the this function works 
-    # for any kind of combination.
-
-
-    dims = params["dimension"]
-    config_vp = params["identification"]["observations"]["velocity_profiles"]
-    n_files = config_vp["n_files"]
-
-    xs = observation["schlieren"]["x"]
-    ys = observation["schlieren"]["y"]
-    xp = observation["pressure_taps"]["x"]
-    yp = observation["pressure_taps"]["y"]
-
     fig, ax = plt.subplots(1, 1, num=1, figsize=(12, 4), sharey=True)
     plt.rc("legend", fontsize=14)
 
-    p0, = ax.plot(xs, ys, 'o', color='b', markersize=2)
-    (p1,) = ax.plot(xp, yp, "o", color="r", markersize=2)
-    for i in range(dims * n_files):
-        xv = observation["velocity_profiles"][i]["x"]
-        yv = observation["velocity_profiles"][i]["y"]
-        (p2,) = ax.plot(xv, yv, "o", color="m", markersize=2)
+    # Plot the full sampled Schlieren dataset if available
+    schlieren = observation_datasets.get("schlieren", {})
+    schlieren_points = []
+    
+    # Append all available Schlieren splits for plotting
+    for dataset in ("training", "validation", "test"):
+        X = schlieren.get(dataset, {}).get("X")
+        if X is not None and len(X) > 0:
+            schlieren_points.append(X)
+
+    if schlieren_points:
+        X = np.vstack(schlieren_points)
+        ax.plot(
+            X[:, 0], X[:, 1], "o",
+            color="b", markersize=3, label="Schlieren",
+        )
+
+    # Plot prescribed boundary points if available
+    if boundary_data is not None:
+        X = boundary_data.get("X")
+        
+        if X is not None and len(X) > 0:
+            ax.plot(
+                X[:, 0], X[:, 1], "o", color="g", markersize=3,
+                label="Prescribed boundary conditions",
+            )
+
+    # Plot pressure taps and velocity profiles if available
+    for name, label, color in (
+        ("velocity_profiles", "Velocity profiles", "m"),
+        ("pressure_taps", "Pressure taps", "r"),
+    ):
+        if name not in observation:
+            continue
+        
+        profiles = observation[name]
+        if name != "velocity_profiles":
+            profiles = [profiles]
+        
+        for profile in profiles:
+        
+            if len(profile["x"]) == 0:
+                continue
+            ax.plot(
+                profile["x"], profile["y"], "o",
+                color=color, markersize=3, label=label,
+            )
+            label = "_nolegend_"
 
     ax.tick_params(direction="in", which="both")
     ax.grid(color="0.5", linestyle=":", linewidth=0.5, which="both")
@@ -138,34 +175,29 @@ def plot_observation_data(observation, params):
     ax.set_aspect("equal", adjustable="box")
     fig.subplots_adjust(left=0.08, right=0.99, bottom=0.15, top=0.97)
 
-    ax.legend(
-        [p0, p1, p2],
-        [
-            r"Schlieren",
-            r"Pressure taps",
-            r"Velocity profiles",
-        ],
-        loc="lower left",
-    )
+    if ax.lines:
+        ax.legend(loc="lower left")
 
     fig.savefig(params["paths"]["results"] + "/observation_data.pdf")
     plt.close(fig)
 
 
-def plot_prepared_observation_datasets(observation, params):
-    """Plot training, validation, and test observation locations.
+def plot_prepared_observation_datasets(observation_datasets, params, boundary_datasets=None):
+    """Plot training, validation, and test observation and boundary locations.
 
     Parameters
     ----------
-    observation : dict
-        Prepared observations containing ``"schlieren"``,
+    observation_datasets : dict
+        Prepared observation datasets containing any combination of ``"schlieren"``,
         ``"velocity_profiles"``, and ``"pressure_taps"``. Schlieren and
         pressure-tap mappings contain ``"training"``, ``"validation"``,
-        and ``"test"`` subsets. Velocity profiles contain ``"u"`` and
-        ``"v"`` mappings with those subsets. Each subset stores
-        coordinates under ``"X"``; all three modalities are required.
+        and ``"test"`` subsets. Velocity profiles map the available
+        components to those subsets. Each subset stores coordinates under
+        ``"X"``. Missing or empty subsets are skipped.
     params : dict
         PIRFlow configuration.
+    boundary_datasets : dict, optional
+        Prescribed boundary splits returned by ``prepare_cfd_datasets``.
 
     Returns
     -------
@@ -175,40 +207,50 @@ def plot_prepared_observation_datasets(observation, params):
 
     # Plot training dataset points
     plot_observation_data_split(
-        observation,
+        observation_datasets,
         params,
-        dataset="training",
+        dataset_name="training",
+        boundary_datasets=boundary_datasets,
     )
 
     # Plot validation dataset points
     plot_observation_data_split(
-        observation,
+        observation_datasets,
         params,
-        dataset="validation",
+        dataset_name="validation",
+        boundary_datasets=boundary_datasets,
     )
 
     # Plot test dataset points
     plot_observation_data_split(
-        observation,
+        observation_datasets,
         params,
-        dataset="test",
+        dataset_name="test",
+        boundary_datasets=boundary_datasets,
     )
 
 
-def plot_observation_data_split(observation, params, dataset):
-    """Plot one observation subset across all three modalities.
+def plot_observation_data_split(
+    observation_datasets, 
+    params, 
+    dataset_name, 
+    boundary_datasets=None
+):
+    """Plot available observation and prescribed boundary points for one split.
 
     Parameters
     ----------
-    observation : dict
-        Prepared observations for all three modalities. Schlieren and
-        pressure-tap coordinates are read from ``[dataset]["X"]``;
+    observation_datasets : dict
+        Prepared observation datasets for any combination of modalities. Schlieren and
+        pressure-tap coordinates are read from ``[dataset_name]["X"]``;
         velocity-profile coordinates are read from
-        ``[component][dataset]["X"]`` for both ``"u"`` and ``"v"``.
+        ``[component][dataset_name]["X"]`` for each available component.
     params : dict
         PIRFlow configuration.
-    dataset : {"training", "validation", "test"}
+    dataset_name : {"training", "validation", "test"}
         Split name and output filename selector.
+    boundary_datasets : dict, optional
+        Prescribed boundary splits returned by ``prepare_cfd_datasets``.
 
     Returns
     -------
@@ -216,29 +258,42 @@ def plot_observation_data_split(observation, params, dataset):
         A PDF file is written to the result directory.
     """
 
-    # Note that this function assumes that the user enabled the
-    # Schlieren, velocity profiesl and pressure taps. 
-    # TODO: make it general so that the this function works 
-    # for any kind of combination.
-
-    xs = observation["schlieren"][dataset]["X"][:, 0] 
-    ys = observation["schlieren"][dataset]["X"][:, 1]
-
-    xu = observation["velocity_profiles"]["u"][dataset]["X"][:, 0]
-    yu = observation["velocity_profiles"]["u"][dataset]["X"][:, 1]
-    xv = observation["velocity_profiles"]["v"][dataset]["X"][:, 0]
-    yv = observation["velocity_profiles"]["v"][dataset]["X"][:, 1]
-
-    xp = observation["pressure_taps"][dataset]["X"][:, 0]
-    yp = observation["pressure_taps"][dataset]["X"][:, 1]
+    suffixes = {"training": "train", "validation": "val", "test": "test"}
+    if dataset_name not in suffixes:
+        raise ValueError(f"Unknown dataset {dataset_name}")
 
     fig, ax = plt.subplots(1, 1, num=1, figsize=(12, 4), sharey=True)
     plt.rc("legend", fontsize=14)
 
-    (p0,) = ax.plot(xp, yp, "o", color="k", markersize=2)
-    ax.plot(xu, yu, "o", color="k", markersize=2)
-    ax.plot(xv, yv, "o", color="k", markersize=2)
-    ax.plot(xs, ys, "o", color="k", markersize=2)
+    # Plot available observation points for each modality
+    for name, modality in observation_datasets.items():
+        
+        if name == "velocity_profiles":
+            profiles = modality.values()
+        else:
+            profiles = [modality]
+
+        for profile in profiles:
+            X = profile.get(dataset_name, {}).get("X")
+            if X is None or len(X) == 0:
+                continue
+            ax.plot(
+                X[:, 0], X[:, 1], "o", color="k", markersize=2,
+                label=f"{dataset_name.title()} data" if not ax.lines else "_nolegend_",
+            )
+
+    # Plot prescribed boundary points if available
+    if boundary_datasets is not None:
+        boundary = boundary_datasets.get(dataset_name, {})
+        suffix = suffixes[dataset_name]
+        x = boundary.get(f"x{suffix}")
+        y = boundary.get(f"y{suffix}")
+        
+        if x is not None and y is not None and len(x) > 0:
+            ax.plot(
+                x, y, "o", color="k", markersize=2,
+                #label="prescribed boundary condition",
+            )
 
     ax.tick_params(direction="in", which="both")
     ax.grid(color="0.5", linestyle=":", linewidth=0.5, which="both")
@@ -248,27 +303,24 @@ def plot_observation_data_split(observation, params, dataset):
     ax.set_aspect("equal", adjustable="box")
     fig.subplots_adjust(left=0.08, right=0.99, bottom=0.15, top=0.97)
 
-    if dataset == "training":
-        ax.legend([p0], [r"Training data"], loc="lower left")
+    if ax.lines:
+        ax.legend(loc="lower left")
+
+    if dataset_name == "training":
         fig.savefig(
             params["paths"]["results"]
             + "/training_observations_dataset_points.pdf"
         )
-    elif dataset == "validation":
-        ax.legend([p0], [r"Validation data"], loc="lower left")
+    elif dataset_name == "validation":
         fig.savefig(
             params["paths"]["results"]
             + "/validation_observation_dataset_points.pdf"
         )
-    elif dataset == "test":
-        ax.legend([p0], [r"Test data"], loc="lower left")
+    elif dataset_name == "test":
         fig.savefig(
             params["paths"]["results"] 
             + "/test_observation_dataset_points.pdf"
         )
-    else:
-        raise ValueError(f"Unknown dataset {dataset}")
-
     plt.close(fig)
 
 
