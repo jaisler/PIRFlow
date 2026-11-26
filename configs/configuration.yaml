@@ -169,7 +169,7 @@ dataset:
 optimizer:
   adam:
     enabled: true
-    iterations: 20
+    iterations: 7500
     learning_rate: 4.0e-4
 
     scheduler:
@@ -180,14 +180,35 @@ optimizer:
   # if both are enabled.
   lbfgs:
     enabled: true
-    iterations: 2
+    iterations: 750
     learning_rate: 1.0
     max_iter_per_step: 30
 
 # Loss
 # ----
 loss:
-  print_frequency: 1
+  print_frequency: 10
+
+  # Wang et al., arXiv:2001.04536v1, Algorithm 1, Eqs. (40)-(41).
+  # Uses max(abs(grad(weighted_PDE_loss))) / mean(abs(grad(unweighted_Li))).
+  # Data/observation weights initialize adaptation; zero disables a term.
+  # Optionally balance the four PDE equations first using inverse mean gradients.
+  # This is not the all-loss L2-norm formulation.
+  adaptive_weighting:
+    enabled: true                 # Set true to activate for model: pinn.
+    balance_residuals: false      # Set true to also adapt mass, x/y momentum, energy.
+    update_frequency: 5         # Adam iterations 1, 11, 21, ...
+    alpha: 0.6                    # New fraction: (1-alpha)*old + alpha*target.
+    epsilon: 1.0e-12              # Skip nonfinite or <= epsilon gradient statistics.
+    min_weight: null              # Optional positive lower bound; zero terms stay off.
+    max_weight: null              # Optional positive upper bound; null means no cap.
+
+  # Residual targets are normalized to the configured sum for usable equations,
+  # then bounded and smoothed. Bounds can change that sum; zero terms stay off.
+
+  # fit() controls the update schedule and increments the Adam counter.
+  # Weights stay fixed throughout L-BFGS.
+  # Validation and test use the original configured weights.
 
   weights:
     data:
