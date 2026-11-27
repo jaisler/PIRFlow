@@ -9,7 +9,7 @@ name = "pirflow"
 version = "0.1.0"
 description = "physics-informed reconstruction of flow fields"
 readme = "README.md"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.11,<3.13"
 license = "MIT"
 license-files = ["LICENSE"]
 
